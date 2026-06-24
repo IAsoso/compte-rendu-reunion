@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Compte-rendu de réunion</title>
+</head>
+<body>
+  <h1>Enregistreur de réunion</h1>
+
+  <!-- Les deux boutons. "disabled" sur Stop = grisé au départ -->
+  <button id="btnEnregistrer">Enregistrer</button>
+  <button id="btnStop" disabled>Stop</button>
+
+  <!-- Le lecteur audio où on réécoutera l'enregistrement -->
+  <audio id="lecteur" controls></audio>
+
+  <!-- Le script : c'est ici que vit toute la logique -->
+  <script>
+    // On récupère les éléments de la page pour les manipuler
+    const btnEnregistrer = document.getElementById("btnEnregistrer");
+    const btnStop = document.getElementById("btnStop");
+    const lecteur = document.getElementById("lecteur");
+
+    // Ces deux variables vont stocker l'enregistreur et les morceaux d'audio
+    let mediaRecorder;
+    let morceauxAudio = [];
+
+    // Quand on clique sur "Enregistrer"
+    btnEnregistrer.onclick = async function () {
+      // On demande l'accès au micro (le navigateur affichera une autorisation)
+      const flux = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      // On crée l'enregistreur à partir du flux du micro
+      mediaRecorder = new MediaRecorder(flux);
+      morceauxAudio = []; // on vide les anciens morceaux
+
+      // À chaque fois qu'un morceau d'audio est prêt, on le stocke
+      mediaRecorder.ondataavailable = function (event) {
+        morceauxAudio.push(event.data);
+      };
+
+      // Quand l'enregistrement s'arrête, on assemble les morceaux en un fichier
+      mediaRecorder.onstop = function () {
+        const blobAudio = new Blob(morceauxAudio, { type: "audio/webm" });
+        const url = URL.createObjectURL(blobAudio);
+        lecteur.src = url; // on met l'audio dans le lecteur pour réécouter
+      };
+
+      mediaRecorder.start(); // c'est parti, ça enregistre
+
+      // On grise le bouton Enregistrer et on active Stop
+      btnEnregistrer.disabled = true;
+      btnStop.disabled = false;
+    };
+
+    // Quand on clique sur "Stop"
+    btnStop.onclick = function () {
+      mediaRecorder.stop(); // on arrête l'enregistrement
+
+      // On réactive Enregistrer et on grise Stop
+      btnEnregistrer.disabled = false;
+      btnStop.disabled = true;
+    };
+  </script>
+</body>
+</html>

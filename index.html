@@ -15,52 +15,65 @@
   <audio id="lecteur" controls></audio>
 
   <!-- Le script : c'est ici que vit toute la logique -->
-  <script>
-    // On récupère les éléments de la page pour les manipuler
+  <<script>
     const btnEnregistrer = document.getElementById("btnEnregistrer");
     const btnStop = document.getElementById("btnStop");
     const lecteur = document.getElementById("lecteur");
 
-    // Ces deux variables vont stocker l'enregistreur et les morceaux d'audio
     let mediaRecorder;
     let morceauxAudio = [];
 
-    // Quand on clique sur "Enregistrer"
     btnEnregistrer.onclick = async function () {
-      // On demande l'accès au micro (le navigateur affichera une autorisation)
       const flux = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      // On crée l'enregistreur à partir du flux du micro
       mediaRecorder = new MediaRecorder(flux);
-      morceauxAudio = []; // on vide les anciens morceaux
+      morceauxAudio = [];
 
-      // À chaque fois qu'un morceau d'audio est prêt, on le stocke
       mediaRecorder.ondataavailable = function (event) {
         morceauxAudio.push(event.data);
       };
 
-      // Quand l'enregistrement s'arrête, on assemble les morceaux en un fichier
-      mediaRecorder.onstop = function () {
+      // Quand l'enregistrement s'arrête : on assemble l'audio,
+      // on le fait réécouter, ET on l'envoie au backend.
+      mediaRecorder.onstop = async function () {
         const blobAudio = new Blob(morceauxAudio, { type: "audio/webm" });
-        const url = URL.createObjectURL(blobAudio);
-        lecteur.src = url; // on met l'audio dans le lecteur pour réécouter
+        lecteur.src = URL.createObjectURL(blobAudio);
+
+        // --- Envoi au backend ---
+        await envoyerAuBackend(blobAudio);
       };
 
-      mediaRecorder.start(); // c'est parti, ça enregistre
-
-      // On grise le bouton Enregistrer et on active Stop
+      mediaRecorder.start();
       btnEnregistrer.disabled = true;
       btnStop.disabled = false;
     };
 
-    // Quand on clique sur "Stop"
     btnStop.onclick = function () {
-      mediaRecorder.stop(); // on arrête l'enregistrement
-
-      // On réactive Enregistrer et on grise Stop
+      mediaRecorder.stop();
       btnEnregistrer.disabled = false;
       btnStop.disabled = true;
     };
+
+    // --- La fonction qui envoie l'audio au backend ---
+    async function envoyerAuBackend(blobAudio) {
+      // FormData = une "enveloppe" pour envoyer un fichier dans une requête.
+      const donnees = new FormData();
+      // On glisse l'audio dedans, sous le nom "fichier"
+      // (ce nom doit correspondre au paramètre de la route FastAPI).
+      donnees.append("fichier", blobAudio, "enregistrement.webm");
+
+      // fetch = la fonction qui envoie la requête au backend.
+      // On vise l'adresse de notre route POST /transcrire.
+      const reponse = await fetch("http://127.0.0.1:8000/transcrire", {
+        method: "POST",
+        body: donnees,
+      });
+
+      // On récupère la réponse du backend (au format JSON) et on l'affiche.
+      const resultat = await reponse.json();
+      console.log("Réponse du backend :", resultat);
+      alert("Le backend répond : " + resultat.message
+            + "\nTaille reçue : " + resultat.taille_octets + " octets");
+    }
   </script>
 </body>
 </html>

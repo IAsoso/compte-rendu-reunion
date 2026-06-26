@@ -1,0 +1,9 @@
+# Environnement virtuel Python (lourd, se recrée localement)
+venv/
+
+# Fichiers de secrets / configuration (clés d'API) — JAMAIS en ligne
+.env
+
+# Fichiers temporaires Python
+__pycache__/
+*.pyc

@@ -15,6 +15,8 @@
   <audio id="lecteur" controls></audio>
   <h2>Transcription :</h2>
   <p id="transcription">(le texte apparaîtra ici après l'enregistrement)</p>
+  <h2>Compte-rendu :</h2>
+  <div id="compteRendu" style="white-space: pre-wrap;">(le compte-rendu apparaîtra ici)</div>
 
   <!-- Le script : c'est ici que vit toute la logique -->
   <<script>
@@ -60,8 +62,8 @@
       const donnees = new FormData();
       donnees.append("fichier", blobAudio, "enregistrement.webm");
 
-      // On affiche un message d'attente pendant la transcription
       document.getElementById("transcription").textContent = "Transcription en cours...";
+      document.getElementById("compteRendu").textContent = "En attente...";
 
       const reponse = await fetch("http://127.0.0.1:8000/transcrire", {
         method: "POST",
@@ -71,8 +73,8 @@
       const resultat = await reponse.json();
       console.log("Réponse du backend :", resultat);
 
-      // On affiche le texte transcrit sur la page
       document.getElementById("transcription").textContent = resultat.texte;
+      document.getElementById("compteRendu").textContent = resultat.compte_rendu;
     }
   </script>
 </body>

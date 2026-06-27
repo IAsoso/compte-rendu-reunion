@@ -13,6 +13,8 @@
 
   <!-- Le lecteur audio où on réécoutera l'enregistrement -->
   <audio id="lecteur" controls></audio>
+  <h2>Transcription :</h2>
+  <p id="transcription">(le texte apparaîtra ici après l'enregistrement)</p>
 
   <!-- Le script : c'est ici que vit toute la logique -->
   <<script>
@@ -55,24 +57,22 @@
 
     // --- La fonction qui envoie l'audio au backend ---
     async function envoyerAuBackend(blobAudio) {
-      // FormData = une "enveloppe" pour envoyer un fichier dans une requête.
       const donnees = new FormData();
-      // On glisse l'audio dedans, sous le nom "fichier"
-      // (ce nom doit correspondre au paramètre de la route FastAPI).
       donnees.append("fichier", blobAudio, "enregistrement.webm");
 
-      // fetch = la fonction qui envoie la requête au backend.
-      // On vise l'adresse de notre route POST /transcrire.
+      // On affiche un message d'attente pendant la transcription
+      document.getElementById("transcription").textContent = "Transcription en cours...";
+
       const reponse = await fetch("http://127.0.0.1:8000/transcrire", {
         method: "POST",
         body: donnees,
       });
 
-      // On récupère la réponse du backend (au format JSON) et on l'affiche.
       const resultat = await reponse.json();
       console.log("Réponse du backend :", resultat);
-      alert("Le backend répond : " + resultat.message
-            + "\nTaille reçue : " + resultat.taille_octets + " octets");
+
+      // On affiche le texte transcrit sur la page
+      document.getElementById("transcription").textContent = resultat.texte;
     }
   </script>
 </body>

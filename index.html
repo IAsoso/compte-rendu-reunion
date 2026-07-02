@@ -4,9 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Synthia — Vos réunions, résumées par l'IA</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <script>document.documentElement.classList.add("js");</script>
 </head>
-<body>
+<body class="page-landing">
   <header>
     <a href="index.html" class="logo-lien">
       <div class="logo">S</div>
@@ -18,50 +22,107 @@
     <a href="app.html" class="lien-retour">Ouvrir l'app →</a>
   </header>
 
-  <!-- Hero -->
-  <section class="hero">
-    <div class="hero-contenu">
-      <h2 class="hero-titre">Ne prenez plus jamais de notes en réunion.</h2>
-      <p class="hero-pitch">
+  <main>
+    <!-- Hero -->
+    <section class="hero">
+      <span class="eyebrow rise">✨ Propulsé par l'intelligence artificielle</span>
+      <h2 class="hero-titre rise d1">Ne prenez plus jamais<br>de notes <span class="grad-text">en réunion.</span></h2>
+      <p class="hero-pitch rise d2">
         Synthia enregistre votre réunion, la transcrit automatiquement, puis en rédige
-        un compte-rendu clair et structuré — avec les décisions prises et les actions à suivre.
-        Le tout propulsé par l'intelligence artificielle.
+        un compte-rendu clair et structuré — décisions prises et actions à suivre incluses.
       </p>
-      <a href="app.html" class="cta">🎙️ Créer un compte-rendu</a>
-    </div>
-  </section>
+      <div class="hero-actions rise d3">
+        <a href="app.html" class="cta">🎙️ Créer un compte-rendu</a>
+        <a href="#etapes" class="lien-doux">Comment ça marche ↓</a>
+      </div>
+      <p class="hero-note rise d4">Aucune installation · Directement dans votre navigateur</p>
+      <div class="hero-wave rise d4" aria-hidden="true">
+        <span style="--i:0"></span><span style="--i:1"></span><span style="--i:2"></span>
+        <span style="--i:3"></span><span style="--i:4"></span><span style="--i:5"></span>
+        <span style="--i:6"></span><span style="--i:7"></span><span style="--i:8"></span>
+        <span style="--i:9"></span><span style="--i:10"></span><span style="--i:11"></span>
+        <span style="--i:12"></span><span style="--i:13"></span><span style="--i:14"></span>
+        <span style="--i:15"></span><span style="--i:16"></span><span style="--i:17"></span>
+        <span style="--i:18"></span><span style="--i:19"></span><span style="--i:20"></span>
+      </div>
+    </section>
 
-  <!-- Comment ça marche -->
-  <section class="conteneur">
-    <h3 class="section-titre">Comment ça marche</h3>
-    <div class="etapes">
-      <div class="carte etape">
-        <div class="etape-numero">1</div>
-        <div class="etape-icone">🎙️</div>
-        <h4>Enregistrez</h4>
-        <p>Lancez l'enregistrement depuis votre navigateur et laissez la réunion se dérouler. Aucune installation.</p>
+    <!-- Vitrine produit (fenêtre factice, purement décorative) -->
+    <section class="vitrine reveal" aria-hidden="true">
+      <div class="fenetre">
+        <div class="fenetre-barre">
+          <span></span><span></span><span></span>
+          <em>Compte-rendu — Réunion produit · 12:04</em>
+        </div>
+        <div class="fenetre-corps">
+          <div class="ligne titre"></div>
+          <div class="ligne"></div>
+          <div class="ligne courte"></div>
+          <div class="chips">
+            <span class="chip">✓ 3 actions</span>
+            <span class="chip">Marie · vendredi</span>
+            <span class="chip">Budget validé</span>
+          </div>
+          <div class="ligne"></div>
+          <div class="ligne courte"></div>
+        </div>
       </div>
-      <div class="carte etape">
-        <div class="etape-numero">2</div>
-        <div class="etape-icone">📝</div>
-        <h4>Transcrivez</h4>
-        <p>L'audio est transcrit automatiquement en texte grâce à Whisper, puis nettoyé et corrigé par l'IA.</p>
-      </div>
-      <div class="carte etape">
-        <div class="etape-numero">3</div>
-        <div class="etape-icone">📄</div>
-        <h4>Résumez</h4>
-        <p>Recevez un compte-rendu structuré : résumé, points clés, décisions et tableau des actions à suivre.</p>
-      </div>
-    </div>
+    </section>
 
-    <div class="cta-final">
-      <a href="app.html" class="cta">Créer un compte-rendu →</a>
-    </div>
-  </section>
+    <!-- Comment ça marche -->
+    <section id="etapes" class="section-etapes">
+      <div class="conteneur">
+        <h3 class="section-titre reveal">Comment ça marche</h3>
+        <div class="etapes">
+          <article class="etape reveal d1">
+            <div class="etape-numero">1</div>
+            <div class="etape-icone">🎙️</div>
+            <h4>Enregistrez</h4>
+            <p>Lancez l'enregistrement depuis votre navigateur et laissez la réunion se dérouler. Aucune installation.</p>
+          </article>
+          <article class="etape reveal d2">
+            <div class="etape-numero">2</div>
+            <div class="etape-icone">📝</div>
+            <h4>Transcrivez</h4>
+            <p>L'audio est transcrit automatiquement grâce à Whisper, puis nettoyé et corrigé par l'IA.</p>
+          </article>
+          <article class="etape reveal d3">
+            <div class="etape-numero">3</div>
+            <div class="etape-icone">📄</div>
+            <h4>Résumez</h4>
+            <p>Recevez un compte-rendu structuré : résumé, points clés, décisions et tableau des actions.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA final -->
+    <section class="section-fin">
+      <div class="conteneur">
+        <div class="bande-cta reveal">
+          <h3>Prêt à gagner du temps sur vos réunions ?</h3>
+          <p>Enregistrez. Synthia s'occupe du reste.</p>
+          <a href="app.html" class="cta cta-inverse">Commencer maintenant →</a>
+        </div>
+      </div>
+    </section>
+  </main>
 
   <footer class="pied">
-    <p>Synthia — Comptes-rendus de réunion par IA · Whisper + Gemini</p>
+    <p>Synthia — Comptes-rendus de réunion par IA · Propulsé par Whisper &amp; Gemini</p>
   </footer>
+
+  <script>
+    // Révélation au scroll (décoratif uniquement)
+    const observateur = new IntersectionObserver((entrees) => {
+      entrees.forEach((e) => {
+        if (e.isIntersecting) {
+          e.target.classList.add("visible");
+          observateur.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.15 });
+    document.querySelectorAll(".reveal").forEach((el) => observateur.observe(el));
+  </script>
 </body>
 </html>

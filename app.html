@@ -9,7 +9,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
-<body class="page-app">
+<body class="page-record">
   <header>
     <a href="index.html" class="logo-lien">
       <div class="logo">S</div>
@@ -23,10 +23,10 @@
 
   <main class="scene">
     <div class="enregistreur">
-      <p class="etat-label" id="etatLabel">Prêt à enregistrer</p>
+      <p class="etat-label rise" id="etatLabel">Prêt à enregistrer</p>
 
       <!-- Bouton micro central (bascule enregistrer / stop) -->
-      <button id="btnMicro" class="btn-micro" aria-label="Démarrer l'enregistrement">
+      <button id="btnMicro" class="btn-micro rise d1" aria-label="Démarrer l'enregistrement">
         <!-- icône micro -->
         <svg class="icone-micro" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
@@ -47,10 +47,10 @@
       <p class="timer cache" id="timer">00:00</p>
 
       <!-- Sous-texte d'aide -->
-      <p class="sous-texte" id="sousTexte">Cliquez sur le micro pour démarrer</p>
+      <p class="sous-texte rise d2" id="sousTexte">Cliquez sur le micro pour démarrer</p>
 
       <!-- Réglages discrets -->
-      <div class="reglages" id="reglages">
+      <div class="reglages rise d3" id="reglages">
         <div class="reglage">
           <label for="typeReunion">Type de réunion</label>
           <select id="typeReunion">

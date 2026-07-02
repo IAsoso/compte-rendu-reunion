@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Synthia — Nouvelle réunion</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="page-app">
+  <header>
+    <a href="index.html" class="logo-lien">
+      <div class="logo">S</div>
+      <div>
+        <h1>Synthia</h1>
+        <div class="tagline">Vos réunions, résumées par l'IA</div>
+      </div>
+    </a>
+    <a href="index.html" class="lien-retour">← Accueil</a>
+  </header>
+
+  <main class="scene">
+    <div class="enregistreur">
+      <p class="etat-label" id="etatLabel">Prêt à enregistrer</p>
+
+      <!-- Bouton micro central (bascule enregistrer / stop) -->
+      <button id="btnMicro" class="btn-micro" aria-label="Démarrer l'enregistrement">
+        <!-- icône micro -->
+        <svg class="icone-micro" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+          <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+          <line x1="12" y1="19" x2="12" y2="23"></line>
+          <line x1="8" y1="23" x2="16" y2="23"></line>
+        </svg>
+        <!-- icône stop -->
+        <svg class="icone-stop" viewBox="0 0 24 24" fill="currentColor">
+          <rect x="6" y="6" width="12" height="12" rx="3"></rect>
+        </svg>
+      </button>
+
+      <!-- Waveform (visible pendant l'enregistrement) -->
+      <div class="waveform cache" id="waveform" aria-hidden="true"></div>
+
+      <!-- Chrono -->
+      <p class="timer cache" id="timer">00:00</p>
+
+      <!-- Sous-texte d'aide -->
+      <p class="sous-texte" id="sousTexte">Cliquez sur le micro pour démarrer</p>
+
+      <!-- Réglages discrets -->
+      <div class="reglages" id="reglages">
+        <div class="reglage">
+          <label for="typeReunion">Type de réunion</label>
+          <select id="typeReunion">
+            <option value="réunion d'équipe">Réunion d'équipe</option>
+            <option value="réunion client">Réunion client</option>
+            <option value="réunion de projet">Réunion de projet</option>
+            <option value="point rapide">Point rapide</option>
+            <option value="réunion générale">Autre / Générale</option>
+          </select>
+        </div>
+        <div class="reglage">
+          <label for="format">Format</label>
+          <select id="format">
+            <option value="concis">Concis (l'essentiel)</option>
+            <option value="détaillé">Détaillé (complet)</option>
+          </select>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Overlay de chargement (après Stop, pendant le traitement backend) -->
+  <div class="overlay-chargement cache" id="overlayChargement">
+    <div class="ondes-chargement">
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+    <p class="texte-chargement">Analyse de votre réunion en cours…</p>
+    <p class="sous-chargement">Transcription, nettoyage puis rédaction du compte-rendu.</p>
+    <p class="erreur-chargement cache" id="erreurChargement"></p>
+  </div>
+
+  <script>
+    // ---- Éléments ----
+    const btnMicro = document.getElementById("btnMicro");
+    const etatLabel = document.getElementById("etatLabel");
+    const sousTexte = document.getElementById("sousTexte");
+    const reglages = document.getElementById("reglages");
+    const waveform = document.getElementById("waveform");
+    const timerEl = document.getElementById("timer");
+    const overlay = document.getElementById("overlayChargement");
+    const erreurChargement = document.getElementById("erreurChargement");
+
+    // ---- État / variables ----
+    let etat = "idle"; // idle | recording
+    let mediaRecorder;
+    let morceauxAudio = [];
+    let flux;
+
+    // Waveform réactive (Web Audio)
+    let audioCtx, analyser, rafId;
+    const NB_BARRES = 32;
+    const barres = [];
+
+    // On génère les barres de la waveform une fois
+    for (let i = 0; i < NB_BARRES; i++) {
+      const b = document.createElement("span");
+      b.className = "barre";
+      b.style.setProperty("--i", i);
+      waveform.appendChild(b);
+      barres.push(b);
+    }
+
+    // Chrono
+    let secondes = 0, timerInterval;
+
+    // ---- Clic sur le micro : bascule ----
+    btnMicro.onclick = function () {
+      if (etat === "idle") demarrerEnregistrement();
+      else if (etat === "recording") arreterEnregistrement();
+    };
+
+    // ---- Démarrer (logique MediaRecorder inchangée) ----
+    async function demarrerEnregistrement() {
+      flux = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(flux);
+      morceauxAudio = [];
+
+      mediaRecorder.ondataavailable = (event) => morceauxAudio.push(event.data);
+
+      mediaRecorder.onstop = async function () {
+        const blobAudio = new Blob(morceauxAudio, { type: "audio/webm" });
+        passerEnChargement();
+        await envoyerAuBackend(blobAudio);
+      };
+
+      mediaRecorder.start();
+      demarrerWaveform();
+      demarrerTimer();
+      passerEnEnregistrement();
+    }
+
+    // ---- Arrêter ----
+    function arreterEnregistrement() {
+      mediaRecorder.stop();               // déclenche onstop -> envoyerAuBackend
+      flux.getTracks().forEach((t) => t.stop());
+      arreterWaveform();
+      arreterTimer();
+    }
+
+    // ---- Envoi au backend (logique fetch inchangée) ----
+    async function envoyerAuBackend(blobAudio) {
+      const typeReunion = document.getElementById("typeReunion").value;
+      const format = document.getElementById("format").value;
+
+      const donnees = new FormData();
+      donnees.append("fichier", blobAudio, "enregistrement.webm");
+      donnees.append("type_reunion", typeReunion);
+      donnees.append("format", format);
+
+      try {
+        const reponse = await fetch("http://127.0.0.1:8000/transcrire", {
+          method: "POST",
+          body: donnees,
+        });
+        const resultat = await reponse.json();
+
+        const donneesResultat = {
+          texte_brut: resultat.texte_brut || "",
+          texte: resultat.texte || "",
+          compte_rendu: resultat.compte_rendu || "",
+          actions: resultat.actions || [],
+          type_reunion: typeReunion,
+          format: format,
+          date: new Date().toISOString(),
+        };
+        sessionStorage.setItem("synthia_resultat", JSON.stringify(donneesResultat));
+
+        window.location.href = "resultat.html";
+      } catch (erreur) {
+        erreurChargement.textContent =
+          "❌ Une erreur est survenue. Vérifiez que le serveur est bien lancé.";
+        erreurChargement.classList.remove("cache");
+        console.error(erreur);
+      }
+    }
+
+    // ================= États visuels =================
+    function passerEnEnregistrement() {
+      etat = "recording";
+      btnMicro.classList.add("enregistre");
+      btnMicro.setAttribute("aria-label", "Arrêter l'enregistrement");
+      etatLabel.textContent = "Enregistrement en cours";
+      sousTexte.textContent = "Cliquez à nouveau pour terminer";
+      reglages.classList.add("cache");
+      waveform.classList.remove("cache");
+      timerEl.classList.remove("cache");
+    }
+
+    function passerEnChargement() {
+      overlay.classList.remove("cache");
+    }
+
+    // ================= Waveform réactive =================
+    function demarrerWaveform() {
+      try {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaStreamSource(flux);
+        analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 64; // 32 bandes de fréquences
+        source.connect(analyser);
+
+        const donnees = new Uint8Array(analyser.frequencyBinCount);
+        const animer = function () {
+          rafId = requestAnimationFrame(animer);
+          analyser.getByteFrequencyData(donnees);
+          for (let i = 0; i < barres.length; i++) {
+            const v = donnees[i] / 255;
+            barres[i].style.transform = "scaleY(" + Math.max(0.08, v) + ")";
+          }
+        };
+        animer();
+      } catch (e) {
+        // Repli : animation CSS si Web Audio indisponible
+        waveform.classList.add("anime-css");
+      }
+    }
+
+    function arreterWaveform() {
+      if (rafId) cancelAnimationFrame(rafId);
+      if (audioCtx) audioCtx.close();
+      waveform.classList.remove("anime-css");
+    }
+
+    // ================= Chrono =================
+    function demarrerTimer() {
+      secondes = 0;
+      majTimer();
+      timerInterval = setInterval(function () {
+        secondes++;
+        majTimer();
+      }, 1000);
+    }
+    function arreterTimer() {
+      clearInterval(timerInterval);
+    }
+    function majTimer() {
+      const m = String(Math.floor(secondes / 60)).padStart(2, "0");
+      const s = String(secondes % 60).padStart(2, "0");
+      timerEl.textContent = m + ":" + s;
+    }
+  </script>
+</body>
+</html>

@@ -100,7 +100,7 @@ audio { width: 100%; margin-top: 12px; }
   color: #334155; border: 1px solid #e2e8f0; border-radius: 8px; cursor: pointer;
 }
 .btn-action:hover { background: #e2e8f0; }
-.cache { display: none; }
+.cache { display: none !important; }
 /* --- Tableau des actions --- */
 #tableauActions { width: 100%; border-collapse: collapse; margin-top: 8px; }
 #tableauActions th {
@@ -109,3 +109,319 @@ audio { width: 100%; margin-top: 12px; }
 }
 #tableauActions td { padding: 12px; border-bottom: 1px solid #f1f5f9; font-size: 0.92rem; }
 #tableauActions tr:hover td { background: #f8fafc; }
+
+/* ===================================================================== */
+/* ===============  LANDING PAGE (page d'accueil)  ===================== */
+/* ===================================================================== */
+
+/* --- Liens dans le header --- */
+.logo-lien {
+  display: flex; align-items: center; gap: 12px;
+  text-decoration: none; color: inherit;
+}
+.lien-retour {
+  margin-left: auto;
+  font-size: 0.9rem; font-weight: 600;
+  color: #2563eb; text-decoration: none;
+  padding: 8px 16px; border-radius: 8px;
+  transition: background 0.2s;
+}
+.lien-retour:hover { background: #eff6ff; }
+
+/* --- Hero --- */
+.hero {
+  text-align: center;
+  padding: 72px 20px 56px;
+  max-width: 760px; margin: 0 auto;
+}
+.hero-titre {
+  font-size: 2.4rem; line-height: 1.2; color: #1e3a8a;
+  margin-bottom: 20px; font-weight: 800;
+}
+.hero-pitch {
+  font-size: 1.1rem; color: #475569;
+  max-width: 620px; margin: 0 auto 32px;
+}
+
+/* --- Bouton CTA principal --- */
+.cta {
+  display: inline-block;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  color: white; font-size: 1.05rem; font-weight: 700;
+  padding: 15px 32px; border-radius: 12px;
+  text-decoration: none;
+  box-shadow: 0 4px 16px rgba(37, 99, 235, 0.3);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+.cta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 22px rgba(37, 99, 235, 0.4);
+}
+
+/* --- Section "Comment ça marche" --- */
+.section-titre {
+  text-align: center; font-size: 1.6rem; color: #1e3a8a;
+  margin-bottom: 32px; font-weight: 700;
+}
+.etapes {
+  display: flex; flex-wrap: wrap; gap: 24px; justify-content: center;
+}
+.etape {
+  flex: 1; min-width: 220px; text-align: center;
+  position: relative;
+}
+.etape-numero {
+  position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+  width: 30px; height: 30px;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  color: white; font-weight: 700; font-size: 0.95rem;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+.etape-icone { font-size: 2.4rem; margin: 10px 0 12px; }
+.etape h4 { font-size: 1.15rem; color: #1e293b; margin-bottom: 8px; }
+.etape p { font-size: 0.95rem; color: #64748b; }
+
+/* --- CTA final --- */
+.cta-final { text-align: center; margin: 48px 0 16px; }
+
+/* --- Pied de page --- */
+.pied {
+  text-align: center; padding: 32px 20px;
+  color: #94a3b8; font-size: 0.85rem;
+}
+
+/* ===================================================================== */
+/* ===============  PAGE RÉSULTAT (édition)  =========================== */
+/* ===================================================================== */
+
+/* --- Zone de statut (app.html) --- */
+.statut { margin-top: 16px; }
+.statut-erreur { color: #ef4444; font-weight: 600; }
+
+/* --- Barre d'outils (resultat.html) --- */
+.barre-outils {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.hint-edition { font-size: 0.85rem; color: #94a3b8; font-style: italic; }
+.barre-boutons { display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* --- Zones éditables (contenteditable) --- */
+.editable {
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 18px 20px;
+  background: #ffffff;
+  min-height: 120px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.editable:hover { border-color: #cbd5e1; }
+.editable:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+.editable h1, .editable h2, .editable h3 { color: #1e293b; margin: 16px 0 8px; font-size: 1.05rem; }
+.editable ul { padding-left: 24px; margin: 8px 0; }
+.editable p { margin: 8px 0; }
+.editable strong { color: #1e3a8a; }
+
+.transcription { color: #475569; margin-top: 14px; }
+.resume-transcription {
+  cursor: pointer; font-weight: 600; color: #1e3a8a;
+  font-size: 1.05rem; padding: 4px 0;
+}
+
+/* --- Tableau des actions éditable --- */
+#tableauActions td[contenteditable="true"]:focus {
+  outline: 2px solid #2563eb; outline-offset: -2px; background: #eff6ff;
+}
+.col-suppr { width: 40px; text-align: center; }
+.btn-suppr {
+  background: transparent; color: #cbd5e1; border: none;
+  font-size: 0.9rem; padding: 4px 8px; cursor: pointer; border-radius: 6px;
+}
+.btn-suppr:hover { color: #ef4444; background: #fef2f2; }
+
+/* --- Toast de confirmation --- */
+.toast {
+  position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+  background: #1e293b; color: white;
+  padding: 12px 22px; border-radius: 10px;
+  font-size: 0.9rem; font-weight: 600;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.2);
+  z-index: 50;
+}
+
+/* ===================================================================== */
+/* ========  PAGE ENREGISTREMENT — DESIGN PREMIUM (page-app)  ========== */
+/* ===================================================================== */
+
+body.page-app {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #fbfbfd;                 /* off-white façon Apple */
+  color: #1d1d1f;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* En-tête translucide et discret */
+body.page-app header {
+  background: rgba(251, 251, 253, 0.72);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: none;
+  padding: 14px 28px;
+}
+body.page-app header h1 { color: #1d1d1f; letter-spacing: -0.02em; font-size: 1.3rem; }
+body.page-app header .tagline { color: #86868b; }
+body.page-app .lien-retour { color: #1d1d1f; }
+body.page-app .lien-retour:hover { background: rgba(0, 0, 0, 0.05); }
+
+/* --- Scène centrée --- */
+.scene {
+  min-height: calc(100vh - 74px);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  text-align: center; padding: 48px 20px 96px;
+}
+.enregistreur {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 26px; width: 100%; max-width: 520px;
+}
+
+.etat-label {
+  font-size: 1.6rem; font-weight: 600; letter-spacing: -0.02em;
+  color: #1d1d1f; margin: 0;
+}
+.sous-texte { font-size: 0.95rem; color: #86868b; margin: 0; }
+
+/* --- Bouton micro central --- */
+.btn-micro {
+  width: 120px; height: 120px; padding: 0;
+  border: none; border-radius: 50%;
+  background: linear-gradient(135deg, #2563eb, #0ea5e9);
+  color: #ffffff; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 12px 40px rgba(37, 99, 235, 0.32);
+  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.28s;
+}
+.btn-micro:hover {
+  transform: translateY(-3px) scale(1.02);
+  box-shadow: 0 18px 52px rgba(37, 99, 235, 0.4);
+}
+.btn-micro:active { transform: scale(0.97); }
+.btn-micro svg { width: 46px; height: 46px; }
+.btn-micro .icone-stop { display: none; }
+
+/* État enregistrement : rouge + halo pulsant */
+.btn-micro.enregistre {
+  background: linear-gradient(135deg, #ff3b30, #ff6b3d);
+  box-shadow: 0 12px 40px rgba(255, 59, 48, 0.4);
+  animation: haloPulse 2s ease-out infinite;
+}
+.btn-micro.enregistre .icone-micro { display: none; }
+.btn-micro.enregistre .icone-stop { display: block; }
+@keyframes haloPulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.35), 0 12px 40px rgba(255, 59, 48, 0.4); }
+  70%  { box-shadow: 0 0 0 24px rgba(255, 59, 48, 0), 0 12px 40px rgba(255, 59, 48, 0.4); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 59, 48, 0), 0 12px 40px rgba(255, 59, 48, 0.4); }
+}
+
+/* --- Waveform réactive --- */
+.waveform {
+  display: flex; align-items: center; justify-content: center;
+  gap: 4px; height: 64px;
+}
+.waveform .barre {
+  width: 4px; height: 100%; border-radius: 4px;
+  background: linear-gradient(180deg, #2563eb, #0ea5e9);
+  transform: scaleY(0.1); transform-origin: center;
+  transition: transform 0.07s ease;
+}
+/* Repli CSS si Web Audio indisponible */
+.waveform.anime-css .barre {
+  animation: egaliseur 1s ease-in-out infinite;
+  animation-delay: calc(var(--i) * 0.05s);
+}
+@keyframes egaliseur {
+  0%, 100% { transform: scaleY(0.2); }
+  50%      { transform: scaleY(1); }
+}
+
+/* --- Chrono --- */
+.timer {
+  font-size: 1.05rem; font-weight: 600; color: #86868b;
+  font-variant-numeric: tabular-nums; margin: 0;
+}
+
+/* --- Réglages discrets (pilules) --- */
+.reglages {
+  display: flex; flex-wrap: wrap; gap: 16px;
+  justify-content: center; margin-top: 6px;
+}
+.reglage { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; }
+.reglage label {
+  font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.07em;
+  color: #86868b; font-weight: 600; padding-left: 4px;
+}
+.reglage select {
+  appearance: none; -webkit-appearance: none;
+  font-family: inherit; font-size: 0.9rem; color: #1d1d1f;
+  background-color: #f5f5f7;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2386868b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat: no-repeat; background-position: right 14px center;
+  border: 1px solid transparent; border-radius: 12px;
+  padding: 11px 40px 11px 16px; cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+.reglage select:hover { background-color: #ececef; }
+.reglage select:focus {
+  outline: none; background-color: #ffffff;
+  border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+/* --- Overlay de chargement --- */
+.overlay-chargement {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(251, 251, 253, 0.82);
+  backdrop-filter: saturate(180%) blur(24px);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 26px;
+  animation: apparition 0.4s ease;
+}
+@keyframes apparition { from { opacity: 0; } to { opacity: 1; } }
+
+.ondes-chargement { display: flex; align-items: center; gap: 7px; height: 60px; }
+.ondes-chargement span {
+  width: 7px; height: 100%; border-radius: 7px;
+  background: linear-gradient(180deg, #2563eb, #0ea5e9);
+  animation: onde 1.1s ease-in-out infinite;
+}
+.ondes-chargement span:nth-child(1) { animation-delay: 0s; }
+.ondes-chargement span:nth-child(2) { animation-delay: 0.15s; }
+.ondes-chargement span:nth-child(3) { animation-delay: 0.3s; }
+.ondes-chargement span:nth-child(4) { animation-delay: 0.45s; }
+.ondes-chargement span:nth-child(5) { animation-delay: 0.6s; }
+@keyframes onde {
+  0%, 100% { transform: scaleY(0.3); }
+  50%      { transform: scaleY(1); }
+}
+
+.texte-chargement {
+  font-size: 1.3rem; font-weight: 600; letter-spacing: -0.01em;
+  color: #1d1d1f; margin: 0;
+}
+.sous-chargement { font-size: 0.92rem; color: #86868b; margin: 0; }
+.erreur-chargement { font-size: 0.92rem; color: #ff3b30; font-weight: 600; margin: 4px 0 0; }
+
+/* --- Responsive --- */
+@media (max-width: 520px) {
+  .btn-micro { width: 104px; height: 104px; }
+  .btn-micro svg { width: 40px; height: 40px; }
+  .etat-label { font-size: 1.35rem; }
+  .reglages { flex-direction: column; align-items: center; }
+}

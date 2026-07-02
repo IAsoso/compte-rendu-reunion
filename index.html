@@ -3,188 +3,65 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Synthia — Comptes-rendus de réunion par IA</title>
+  <title>Synthia — Vos réunions, résumées par l'IA</title>
   <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
   <header>
-    <div class="logo">S</div>
-    <div>
-      <h1>Synthia</h1>
-      <div class="tagline">Vos réunions, résumées par l'IA</div>
-    </div>
+    <a href="index.html" class="logo-lien">
+      <div class="logo">S</div>
+      <div>
+        <h1>Synthia</h1>
+        <div class="tagline">Vos réunions, résumées par l'IA</div>
+      </div>
+    </a>
+    <a href="app.html" class="lien-retour">Ouvrir l'app →</a>
   </header>
 
-  <div class="conteneur">
-    <!-- Options + Enregistrement -->
-    <div class="carte">
-      <h2>🎙️ Nouvelle réunion</h2>
-      <div class="options">
-        <div class="option-groupe">
-          <label for="typeReunion">Type de réunion</label>
-          <select id="typeReunion">
-            <option value="réunion d'équipe">Réunion d'équipe</option>
-            <option value="réunion client">Réunion client</option>
-            <option value="réunion de projet">Réunion de projet</option>
-            <option value="point rapide">Point rapide</option>
-            <option value="réunion générale">Autre / Générale</option>
-          </select>
-        </div>
-        <div class="option-groupe">
-          <label for="format">Format du compte-rendu</label>
-          <select id="format">
-            <option value="concis">Concis (l'essentiel)</option>
-            <option value="détaillé">Détaillé (complet)</option>
-          </select>
-        </div>
-      </div>
-      <div class="boutons">
-        <button id="btnEnregistrer">● Enregistrer</button>
-        <button id="btnStop" disabled>■ Stop</button>
-      </div>
-      <audio id="lecteur" controls></audio>
+  <!-- Hero -->
+  <section class="hero">
+    <div class="hero-contenu">
+      <h2 class="hero-titre">Ne prenez plus jamais de notes en réunion.</h2>
+      <p class="hero-pitch">
+        Synthia enregistre votre réunion, la transcrit automatiquement, puis en rédige
+        un compte-rendu clair et structuré — avec les décisions prises et les actions à suivre.
+        Le tout propulsé par l'intelligence artificielle.
+      </p>
+      <a href="app.html" class="cta">🎙️ Créer un compte-rendu</a>
     </div>
+  </section>
 
-    <!-- Transcription -->
-    <div class="carte">
-      <h2>📝 Transcription</h2>
-      <p id="transcription" class="attente">Le texte apparaîtra ici après l'enregistrement.</p>
-    </div>
-
-    <!-- Compte-rendu -->
-    <div class="carte">
-      <h2>📄 Compte-rendu</h2>
-      <div id="compteRendu" class="attente">Le compte-rendu apparaîtra ici.</div>
-      <div class="actions cache" id="actionsResultat">
-        <button class="btn-action" id="btnCopier">📋 Copier</button>
-        <button class="btn-action" id="btnTelecharger">⬇️ Télécharger</button>
+  <!-- Comment ça marche -->
+  <section class="conteneur">
+    <h3 class="section-titre">Comment ça marche</h3>
+    <div class="etapes">
+      <div class="carte etape">
+        <div class="etape-numero">1</div>
+        <div class="etape-icone">🎙️</div>
+        <h4>Enregistrez</h4>
+        <p>Lancez l'enregistrement depuis votre navigateur et laissez la réunion se dérouler. Aucune installation.</p>
+      </div>
+      <div class="carte etape">
+        <div class="etape-numero">2</div>
+        <div class="etape-icone">📝</div>
+        <h4>Transcrivez</h4>
+        <p>L'audio est transcrit automatiquement en texte grâce à Whisper, puis nettoyé et corrigé par l'IA.</p>
+      </div>
+      <div class="carte etape">
+        <div class="etape-numero">3</div>
+        <div class="etape-icone">📄</div>
+        <h4>Résumez</h4>
+        <p>Recevez un compte-rendu structuré : résumé, points clés, décisions et tableau des actions à suivre.</p>
       </div>
     </div>
-  </div>
-  <!-- Tableau des actions -->
-    <div class="carte">
-      <h2>✅ Actions à suivre</h2>
-      <table id="tableauActions">
-        <thead>
-          <tr><th>Tâche</th><th>Responsable</th><th>Échéance</th></tr>
-        </thead>
-        <tbody id="corpsActions">
-          <tr><td colspan="3" class="attente">Les actions apparaîtront ici.</td></tr>
-        </tbody>
-      </table>
+
+    <div class="cta-final">
+      <a href="app.html" class="cta">Créer un compte-rendu →</a>
     </div>
+  </section>
 
-  <script>
-    const btnEnregistrer = document.getElementById("btnEnregistrer");
-    const btnStop = document.getElementById("btnStop");
-    const lecteur = document.getElementById("lecteur");
-    const elemTranscription = document.getElementById("transcription");
-    const elemCompteRendu = document.getElementById("compteRendu");
-    const actionsResultat = document.getElementById("actionsResultat");
-
-    let mediaRecorder;
-    let morceauxAudio = [];
-    let compteRenduTexte = ""; // pour la copie/téléchargement
-
-    btnEnregistrer.onclick = async function () {
-      const flux = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(flux);
-      morceauxAudio = [];
-
-      mediaRecorder.ondataavailable = (event) => morceauxAudio.push(event.data);
-
-      mediaRecorder.onstop = async function () {
-        const blobAudio = new Blob(morceauxAudio, { type: "audio/webm" });
-        lecteur.src = URL.createObjectURL(blobAudio);
-        await envoyerAuBackend(blobAudio);
-      };
-
-      mediaRecorder.start();
-      btnEnregistrer.disabled = true;
-      btnStop.disabled = false;
-    };
-
-    btnStop.onclick = function () {
-      mediaRecorder.stop();
-      btnEnregistrer.disabled = false;
-      btnStop.disabled = true;
-    };
-
-    async function envoyerAuBackend(blobAudio) {
-      // On récupère les choix de l'utilisateur
-      const typeReunion = document.getElementById("typeReunion").value;
-      const format = document.getElementById("format").value;
-
-      const donnees = new FormData();
-      donnees.append("fichier", blobAudio, "enregistrement.webm");
-      donnees.append("type_reunion", typeReunion);
-      donnees.append("format", format);
-
-      // Affichage du chargement
-      elemTranscription.innerHTML = '<div class="chargement"><div class="spinner"></div> Transcription en cours...</div>';
-      elemCompteRendu.innerHTML = '<div class="chargement"><div class="spinner"></div> Génération du compte-rendu...</div>';
-      actionsResultat.classList.add("cache");
-
-      try {
-        const reponse = await fetch("http://127.0.0.1:8000/transcrire", {
-          method: "POST",
-          body: donnees,
-        });
-        const resultat = await reponse.json();
-
-        elemTranscription.textContent = resultat.texte;
-        elemTranscription.className = "";
-
-        compteRenduTexte = resultat.compte_rendu;
-        elemCompteRendu.innerHTML = marked.parse(resultat.compte_rendu);
-        elemCompteRendu.className = "";
-        actionsResultat.classList.remove("cache");
-        // Affichage du tableau des actions
-        afficherActions(resultat.actions);
-      } catch (erreur) {
-        elemCompteRendu.innerHTML = '<span style="color:#ef4444">Une erreur est survenue. Vérifiez que le serveur est lancé.</span>';
-        console.error(erreur);
-      }
-    }
-    function afficherActions(actions) {
-      const corps = document.getElementById("corpsActions");
-      corps.innerHTML = ""; // on vide le tableau
-
-      if (!actions || actions.length === 0) {
-        corps.innerHTML = '<tr><td colspan="3" class="attente">Aucune action identifiée.</td></tr>';
-        return;
-      }
-
-      // Pour chaque action, on crée une ligne de tableau
-      actions.forEach(action => {
-        const ligne = document.createElement("tr");
-        ligne.innerHTML = `
-          <td>${action.tache || "-"}</td>
-          <td>${action.responsable || "-"}</td>
-          <td>${action.echeance || "-"}</td>
-        `;
-        corps.appendChild(ligne);
-      });
-    }
-
-    // --- Action : copier ---
-    document.getElementById("btnCopier").onclick = function () {
-      navigator.clipboard.writeText(compteRenduTexte);
-      this.textContent = "✅ Copié !";
-      setTimeout(() => { this.textContent = "📋 Copier"; }, 2000);
-    };
-
-    // --- Action : télécharger ---
-    document.getElementById("btnTelecharger").onclick = function () {
-      const blob = new Blob([compteRenduTexte], { type: "text/plain" });
-      const url = URL.createObjectURL(blob);
-      const lien = document.createElement("a");
-      lien.href = url;
-      lien.download = "compte-rendu.txt";
-      lien.click();
-      URL.revokeObjectURL(url);
-    };
-  </script>
+  <footer class="pied">
+    <p>Synthia — Comptes-rendus de réunion par IA · Whisper + Gemini</p>
+  </footer>
 </body>
 </html>

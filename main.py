@@ -147,31 +147,3 @@ async def transcrire(
 @app.get("/")
 def accueil():
     return {"message": "Le backend fonctionne !"}
-
-
-@app.post("/transcrire")
-async def transcrire(fichier: UploadFile = File(...)):
-    # 1. Lire l'audio reçu
-    contenu = await fichier.read()
-
-    # 2. Écrire dans un fichier temporaire
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as fichier_temp:
-        fichier_temp.write(contenu)
-        chemin_temp = fichier_temp.name
-
-    # 3. Transcrire avec Whisper
-    try:
-        resultat = modele_whisper.transcribe(chemin_temp, language="fr")
-        texte = resultat["text"]
-    finally:
-        os.remove(chemin_temp)
-
-    # 4. Générer le compte-rendu avec Gemini
-    compte_rendu = generer_compte_rendu(texte)
-
-    # 5. Renvoyer la transcription ET le compte-rendu
-    return {
-        "texte": texte,
-        "compte_rendu": compte_rendu,
-        "message": "Transcription et compte-rendu réussis !"
-    }

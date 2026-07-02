@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Synthia — Compte-rendu</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+  <header>
+    <a href="index.html" class="logo-lien">
+      <div class="logo">S</div>
+      <div>
+        <h1>Synthia</h1>
+        <div class="tagline">Vos réunions, résumées par l'IA</div>
+      </div>
+    </a>
+    <a href="app.html" class="lien-retour">← Nouvelle réunion</a>
+  </header>
+
+  <div class="conteneur">
+    <!-- État vide : aucune donnée en session -->
+    <div id="etatVide" class="carte cache">
+      <h2>Aucun compte-rendu à afficher</h2>
+      <p class="attente">Commencez par enregistrer une réunion.</p>
+      <div style="margin-top:16px">
+        <a href="app.html" class="cta">🎙️ Créer un compte-rendu</a>
+      </div>
+    </div>
+
+    <!-- Contenu principal -->
+    <div id="contenu" class="cache">
+      <!-- Barre d'outils -->
+      <div class="barre-outils">
+        <span class="hint-edition">✏️ Cliquez dans le texte pour l'éditer librement</span>
+        <div class="barre-boutons">
+          <button class="btn-action" id="btnEnregistrerModifs">💾 Enregistrer les modifications</button>
+          <button class="btn-action" id="btnCopier">📋 Copier</button>
+          <button class="btn-action" id="btnTelechargerTxt">⬇️ Texte</button>
+          <button class="btn-action" id="btnTelechargerPdf">📄 PDF</button>
+        </div>
+      </div>
+
+      <!-- Compte-rendu éditable -->
+      <div class="carte">
+        <h2>📄 Compte-rendu</h2>
+        <div id="compteRendu" class="editable" contenteditable="true"></div>
+      </div>
+
+      <!-- Tableau des actions éditable -->
+      <div class="carte">
+        <h2>✅ Actions à suivre</h2>
+        <table id="tableauActions">
+          <thead>
+            <tr><th>Tâche</th><th>Responsable</th><th>Échéance</th><th class="col-suppr"></th></tr>
+          </thead>
+          <tbody id="corpsActions"></tbody>
+        </table>
+        <button class="btn-action" id="btnAjouterLigne" style="margin-top:12px">➕ Ajouter une ligne</button>
+      </div>
+
+      <!-- Transcription (repliable, éditable) -->
+      <div class="carte">
+        <details>
+          <summary class="resume-transcription">📝 Voir / éditer la transcription</summary>
+          <div id="transcription" class="editable transcription" contenteditable="true"></div>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast de confirmation -->
+  <div id="toast" class="toast cache"></div>
+
+  <script>
+    const CLE = "synthia_resultat";
+    const elemContenu = document.getElementById("contenu");
+    const elemVide = document.getElementById("etatVide");
+    const elemCompteRendu = document.getElementById("compteRendu");
+    const elemTranscription = document.getElementById("transcription");
+    const corpsActions = document.getElementById("corpsActions");
+
+    // --- 1. Chargement des données depuis sessionStorage ---
+    const data = JSON.parse(sessionStorage.getItem(CLE) || "null");
+
+    if (!data) {
+      elemVide.classList.remove("cache");
+    } else {
+      elemContenu.classList.remove("cache");
+
+      // Compte-rendu : on réutilise le HTML édité s'il existe, sinon on parse le Markdown
+      elemCompteRendu.innerHTML =
+        data.compte_rendu_html || marked.parse(data.compte_rendu || "");
+
+      // Transcription
+      elemTranscription.textContent = data.texte || "";
+
+      // Actions
+      afficherActions(data.actions || []);
+    }
+
+    // --- 2. Affichage du tableau des actions (cellules éditables) ---
+    function afficherActions(actions) {
+      corpsActions.innerHTML = "";
+      if (!actions || actions.length === 0) {
+        ajouterLigneAction({ tache: "", responsable: "", echeance: "" });
+        return;
+      }
+      actions.forEach(ajouterLigneAction);
+    }
+
+    function ajouterLigneAction(action) {
+      const ligne = document.createElement("tr");
+      ligne.innerHTML = `
+        <td contenteditable="true">${echapper(action.tache || "")}</td>
+        <td contenteditable="true">${echapper(action.responsable || "")}</td>
+        <td contenteditable="true">${echapper(action.echeance || "")}</td>
+        <td class="col-suppr"><button class="btn-suppr" title="Supprimer la ligne">✕</button></td>
+      `;
+      ligne.querySelector(".btn-suppr").onclick = () => ligne.remove();
+      corpsActions.appendChild(ligne);
+    }
+
+    // Petite protection contre l'injection HTML dans les cellules
+    function echapper(txt) {
+      const d = document.createElement("div");
+      d.textContent = txt;
+      return d.innerHTML;
+    }
+
+    // Lecture du tableau -> tableau d'objets
+    function lireActions() {
+      const actions = [];
+      corpsActions.querySelectorAll("tr").forEach((tr) => {
+        const cells = tr.querySelectorAll("td");
+        const tache = cells[0].textContent.trim();
+        const responsable = cells[1].textContent.trim();
+        const echeance = cells[2].textContent.trim();
+        if (tache || responsable || echeance) {
+          actions.push({ tache, responsable, echeance });
+        }
+      });
+      return actions;
+    }
+
+    // --- 3. Bouton "Ajouter une ligne" ---
+    document.getElementById("btnAjouterLigne").onclick = function () {
+      ajouterLigneAction({ tache: "", responsable: "", echeance: "" });
+    };
+
+    // --- 4. Enregistrer les modifications dans sessionStorage ---
+    document.getElementById("btnEnregistrerModifs").onclick = function () {
+      if (!data) return;
+      data.compte_rendu_html = elemCompteRendu.innerHTML;
+      data.texte = elemTranscription.textContent;
+      data.actions = lireActions();
+      sessionStorage.setItem(CLE, JSON.stringify(data));
+      afficherToast("✅ Modifications enregistrées");
+    };
+
+    // --- 5. Copier le compte-rendu (texte brut) ---
+    document.getElementById("btnCopier").onclick = function () {
+      navigator.clipboard.writeText(elemCompteRendu.innerText);
+      afficherToast("📋 Compte-rendu copié");
+    };
+
+    // --- 6. Télécharger en texte ---
+    document.getElementById("btnTelechargerTxt").onclick = function () {
+      const blob = new Blob([elemCompteRendu.innerText], { type: "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const lien = document.createElement("a");
+      lien.href = url;
+      lien.download = "compte-rendu.txt";
+      lien.click();
+      URL.revokeObjectURL(url);
+    };
+
+    // --- 7. Télécharger en PDF ---
+    document.getElementById("btnTelechargerPdf").onclick = function () {
+      const options = {
+        margin: 15,
+        filename: "compte-rendu.pdf",
+        image: { type: "jpeg", quality: 0.98 },
+        html2canvas: { scale: 2 },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      };
+      html2pdf().set(options).from(elemCompteRendu).save();
+    };
+
+    // --- Toast de confirmation ---
+    let timerToast;
+    function afficherToast(message) {
+      const toast = document.getElementById("toast");
+      toast.textContent = message;
+      toast.classList.remove("cache");
+      clearTimeout(timerToast);
+      timerToast = setTimeout(() => toast.classList.add("cache"), 2200);
+    }
+  </script>
+</body>
+</html>

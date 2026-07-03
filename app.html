@@ -77,8 +77,12 @@
     <div class="ondes-chargement">
       <span></span><span></span><span></span><span></span><span></span>
     </div>
-    <p class="texte-chargement">Analyse de votre réunion en cours…</p>
-    <p class="sous-chargement">Transcription, nettoyage puis rédaction du compte-rendu.</p>
+    <p class="texte-chargement" id="texteChargement">Analyse de votre réunion en cours…</p>
+    <div class="barre-progression">
+      <div class="barre-remplissage" id="barreRemplissage"></div>
+    </div>
+    <p class="pourcentage" id="pourcentageTexte">0 %</p>
+    <p class="sous-chargement">Les longues réunions sont découpées, puis résumées partie par partie.</p>
     <p class="erreur-chargement cache" id="erreurChargement"></p>
   </div>
 
@@ -92,6 +96,9 @@
     const timerEl = document.getElementById("timer");
     const overlay = document.getElementById("overlayChargement");
     const erreurChargement = document.getElementById("erreurChargement");
+    const texteChargement = document.getElementById("texteChargement");
+    const barreRemplissage = document.getElementById("barreRemplissage");
+    const pourcentageTexte = document.getElementById("pourcentageTexte");
 
     // ---- État / variables ----
     let etat = "idle"; // idle | recording
@@ -150,7 +157,7 @@
       arreterTimer();
     }
 
-    // ---- Envoi au backend (logique fetch inchangée) ----
+    // ---- Envoi au backend en mode ASYNCHRONE + suivi de progression ----
     async function envoyerAuBackend(blobAudio) {
       const typeReunion = document.getElementById("typeReunion").value;
       const format = document.getElementById("format").value;
@@ -161,30 +168,71 @@
       donnees.append("format", format);
 
       try {
-        const reponse = await fetch("http://127.0.0.1:8000/transcrire", {
+        // 1. On lance le traitement : le backend répond aussitôt avec un job_id
+        const reponse = await fetch("http://127.0.0.1:8000/transcrire-async", {
           method: "POST",
           body: donnees,
         });
-        const resultat = await reponse.json();
+        const donneesJob = await reponse.json();
 
-        const donneesResultat = {
-          texte_brut: resultat.texte_brut || "",
-          texte: resultat.texte || "",
-          compte_rendu: resultat.compte_rendu || "",
-          actions: resultat.actions || [],
-          type_reunion: typeReunion,
-          format: format,
-          date: new Date().toISOString(),
-        };
-        sessionStorage.setItem("synthia_resultat", JSON.stringify(donneesResultat));
-
-        window.location.href = "resultat.html";
+        // 2. On suit la progression jusqu'à la fin
+        suivreProgression(donneesJob.job_id, typeReunion, format);
       } catch (erreur) {
-        erreurChargement.textContent =
-          "❌ Une erreur est survenue. Vérifiez que le serveur est bien lancé.";
-        erreurChargement.classList.remove("cache");
-        console.error(erreur);
+        afficherErreurChargement(erreur);
       }
+    }
+
+    // ---- Interrogation régulière de la progression (toutes les ~1 s) ----
+    function suivreProgression(jobId, typeReunion, format) {
+      const sonder = async function () {
+        try {
+          const reponse = await fetch("http://127.0.0.1:8000/progression/" + jobId);
+          const p = await reponse.json();
+
+          if (p.statut === "termine") {
+            majBarre(100, p.message || "Compte-rendu prêt !");
+            const r = p.resultat || {};
+            const donneesResultat = {
+              texte_brut: r.texte_brut || "",
+              texte: r.texte || "",
+              compte_rendu: r.compte_rendu || "",
+              actions: r.actions || [],
+              type_reunion: typeReunion,
+              format: format,
+              date: new Date().toISOString(),
+            };
+            sessionStorage.setItem("synthia_resultat", JSON.stringify(donneesResultat));
+            window.location.href = "resultat.html";
+            return;
+          }
+
+          if (p.statut === "erreur" || p.statut === "inconnu") {
+            afficherErreurChargement(p.erreur || "Traitement interrompu.");
+            return;
+          }
+
+          // Toujours en cours : on met à jour la barre et on re-sonde
+          majBarre(p.pourcentage || 0, p.message || "Traitement en cours…");
+          setTimeout(sonder, 1000);
+        } catch (erreur) {
+          afficherErreurChargement(erreur);
+        }
+      };
+      sonder();
+    }
+
+    // ---- Mise à jour visuelle de la barre + du message ----
+    function majBarre(pourcentage, message) {
+      barreRemplissage.style.width = pourcentage + "%";
+      pourcentageTexte.textContent = pourcentage + " %";
+      texteChargement.textContent = message;
+    }
+
+    function afficherErreurChargement(erreur) {
+      erreurChargement.textContent =
+        "❌ Une erreur est survenue. Vérifiez que le serveur est bien lancé.";
+      erreurChargement.classList.remove("cache");
+      console.error(erreur);
     }
 
     // ================= États visuels =================

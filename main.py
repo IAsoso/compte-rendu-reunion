@@ -1,8 +1,12 @@
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import whisper
 import tempfile
 import os
+import uuid
+import threading
+from pydub import AudioSegment
 from google import genai
 from dotenv import load_dotenv
 import json
@@ -107,6 +111,174 @@ Transcription :
         # Filet de sécurité : si le JSON est mal formé, on renvoie une liste vide
         actions = []
     return actions
+
+
+# ======================================================================
+#  GESTION DES LONGUES RÉUNIONS (découpage + map-reduce)
+# ======================================================================
+
+# Durée d'une tranche pour les audios longs (5 minutes)
+DUREE_TRANCHE_MS = 5 * 60 * 1000
+
+
+def trouver_coupure_silencieuse(audio, position_ms, fenetre_ms=3000, pas_ms=100):
+    """Cherche le moment le plus silencieux autour d'une position, pour couper
+    proprement (pas au milieu d'un mot). N'analyse qu'une petite fenêtre."""
+    debut = max(0, position_ms - fenetre_ms)
+    fin = min(len(audio), position_ms + fenetre_ms)
+    meilleure_position = position_ms
+    volume_min = float("inf")
+    for p in range(debut, fin, pas_ms):
+        volume = audio[p:p + pas_ms].dBFS  # -inf pour un silence total
+        if volume < volume_min:
+            volume_min = volume
+            meilleure_position = p
+    return meilleure_position
+
+
+def decouper_audio(audio):
+    """Découpe un AudioSegment en tranches d'environ 5 min, coupées sur les
+    zones les plus silencieuses. Renvoie la liste des chemins de fichiers WAV."""
+    duree = len(audio)
+    # 1. Calcul des points de coupe (calés sur les silences)
+    points = [0]
+    position = DUREE_TRANCHE_MS
+    while position < duree:
+        coupure = trouver_coupure_silencieuse(audio, position)
+        if coupure <= points[-1]:      # sécurité : toujours avancer
+            coupure = position
+        points.append(coupure)
+        position += DUREE_TRANCHE_MS
+    points.append(duree)
+
+    # 2. Export de chaque tranche en WAV temporaire
+    chemins = []
+    for i in range(len(points) - 1):
+        morceau = audio[points[i]:points[i + 1]]
+        fichier_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
+        morceau.export(fichier_temp.name, format="wav")
+        fichier_temp.close()
+        chemins.append(fichier_temp.name)
+    return chemins
+
+
+def resumer_morceau(texte_morceau, type_reunion):
+    """MAP : produit des notes structurées concises pour un extrait de réunion."""
+    prompt = f"""Tu analyses UN EXTRAIT d'une réunion ({type_reunion}).
+À partir de cet extrait, produis des notes concises et structurées : points abordés,
+décisions évoquées, actions/engagements mentionnés. Ne rédige PAS encore le compte-rendu
+final, ne fais pas d'introduction : uniquement des notes fidèles à cet extrait.
+
+Extrait :
+{texte_morceau}
+"""
+    reponse = client_gemini.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt
+    )
+    return reponse.text
+
+
+def generer_compte_rendu_depuis_resumes(resumes, type_reunion, format_souhaite):
+    """REDUCE : assemble les notes de toutes les parties en UN compte-rendu final."""
+    if format_souhaite == "concis":
+        consigne_format = "Sois bref et va à l'essentiel. Compte-rendu court."
+    else:
+        consigne_format = "Sois complet et détaillé, développe chaque point."
+
+    corpus = "\n\n".join(
+        f"[Partie {i + 1}]\n{r}" for i, r in enumerate(resumes)
+    )
+
+    prompt = f"""Tu es un assistant spécialisé dans la rédaction de comptes-rendus de réunion professionnels.
+
+Type de réunion : {type_reunion}.
+{consigne_format}
+
+Voici les NOTES de plusieurs parties successives d'UNE MÊME réunion. Rédige UN SEUL
+compte-rendu final, cohérent et non redondant (fusionne les répétitions entre parties),
+avec les sections suivantes :
+- Résumé général
+- Points clés abordés
+- Décisions prises
+- Actions à faire (avec qui si mentionné)
+
+Si une section n'a pas d'information, indique "Aucune information". N'utilise pas de titre principal redondant.
+
+Notes des différentes parties :
+{corpus}
+"""
+    reponse = client_gemini.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt
+    )
+    return reponse.text
+
+
+def traiter_audio_complet(chemin_audio, type_reunion, format_souhaite, maj_progression):
+    """Traite un audio de bout en bout. Aiguille vers le flux court (existant) ou
+    le flux long (découpage + map-reduce). `maj_progression(phase, courant, total, message)`
+    est appelé régulièrement pour suivre l'avancement."""
+    audio = AudioSegment.from_file(chemin_audio)
+    duree = len(audio)
+
+    # ---------- Audio COURT : flux existant, inchangé ----------
+    if duree <= DUREE_TRANCHE_MS:
+        maj_progression("transcription", 0, 1, "Transcription en cours…")
+        resultat = modele_whisper.transcribe(chemin_audio, language="fr")
+        texte_brut = resultat["text"]
+
+        maj_progression("redaction", 0, 1, "Rédaction du compte-rendu…")
+        texte_propre = nettoyer_transcription(texte_brut)
+        compte_rendu = generer_compte_rendu(texte_propre, type_reunion, format_souhaite)
+        actions = extraire_actions(texte_propre)
+
+        return {
+            "texte_brut": texte_brut,
+            "texte": texte_propre,
+            "compte_rendu": compte_rendu,
+            "actions": actions,
+            "message": "Transcription, nettoyage, compte-rendu et actions réussis !",
+        }
+
+    # ---------- Audio LONG : découpage + map-reduce ----------
+    maj_progression("decoupage", 0, 1, "Découpage de l'audio en tranches…")
+    morceaux = decouper_audio(audio)
+    total = len(morceaux)
+
+    transcriptions = []
+    try:
+        for i, chemin_morceau in enumerate(morceaux):
+            maj_progression("transcription", i, total, f"Transcription {i + 1}/{total}…")
+            resultat = modele_whisper.transcribe(chemin_morceau, language="fr")
+            transcriptions.append(resultat["text"].strip())
+        maj_progression("transcription", total, total, "Transcription terminée")
+    finally:
+        for chemin_morceau in morceaux:
+            os.remove(chemin_morceau)
+
+    texte_complet = " ".join(transcriptions)
+
+    # MAP : notes par tranche
+    resumes = []
+    for i, texte_morceau in enumerate(transcriptions):
+        maj_progression("redaction", i, total, f"Analyse de la partie {i + 1}/{total}…")
+        resumes.append(resumer_morceau(texte_morceau, type_reunion))
+
+    # REDUCE : compte-rendu final + actions (sur les notes, courtes)
+    maj_progression("redaction", total, total, "Rédaction du compte-rendu final…")
+    compte_rendu = generer_compte_rendu_depuis_resumes(resumes, type_reunion, format_souhaite)
+    actions = extraire_actions("\n\n".join(resumes))
+
+    return {
+        "texte_brut": texte_complet,
+        "texte": texte_complet,
+        "compte_rendu": compte_rendu,
+        "actions": actions,
+        "message": f"Réunion longue traitée en {total} tranches.",
+    }
+
+
 @app.post("/transcrire")
 async def transcrire(
     fichier: UploadFile = File(...),
@@ -119,31 +291,148 @@ async def transcrire(
         fichier_temp.write(contenu)
         chemin_temp = fichier_temp.name
 
+    # Progression neutre : cette route reste synchrone (compatibilité).
+    def sans_progression(phase, courant, total, message):
+        pass
+
     try:
-        resultat = modele_whisper.transcribe(chemin_temp, language="fr")
-        texte_brut = resultat["text"]
+        resultat = traiter_audio_complet(
+            chemin_temp, type_reunion, format, sans_progression
+        )
     finally:
         os.remove(chemin_temp)
 
-    # Étape de nettoyage (preprocessing) : on corrige le texte brut
-    texte_propre = nettoyer_transcription(texte_brut)
-
-    # On génère le compte-rendu à partir du texte PROPRE
-    compte_rendu = generer_compte_rendu(texte_propre, type_reunion, format)
-
-    # On extrait les actions sous forme structurée
-    actions = extraire_actions(texte_propre)
-
-    return {
-        "texte_brut": texte_brut,
-        "texte": texte_propre,
-        "compte_rendu": compte_rendu,
-        "actions": actions,
-        "message": "Transcription, nettoyage, compte-rendu et actions réussis !"
-    }
+    return resultat
 
 
 # --- Routes ---
 @app.get("/")
 def accueil():
     return {"message": "Le backend fonctionne !"}
+
+
+# --- Modification du compte-rendu par IA (chat en langage naturel) ---
+class DemandeModification(BaseModel):
+    compte_rendu: str
+    instruction: str
+
+
+def modifier_compte_rendu_ia(compte_rendu, instruction):
+    prompt = f"""Voici un compte-rendu de réunion. Applique cette modification demandée par l'utilisateur, et renvoie UNIQUEMENT le compte-rendu modifié en entier, sans commentaire.
+
+Modification demandée : {instruction}
+
+Compte-rendu actuel :
+{compte_rendu}
+"""
+    reponse = client_gemini.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt
+    )
+    return reponse.text
+
+
+@app.post("/modifier-compte-rendu")
+def modifier_compte_rendu(demande: DemandeModification):
+    compte_rendu_modifie = modifier_compte_rendu_ia(
+        demande.compte_rendu, demande.instruction
+    )
+    return {"compte_rendu": compte_rendu_modifie}
+
+
+# ======================================================================
+#  TRAITEMENT ASYNCHRONE + PROGRESSION (pour les longues réunions)
+# ======================================================================
+
+# Magasin en mémoire des travaux en cours (clé = job_id)
+travaux = {}
+
+# Pondération des phases pour convertir l'avancement en pourcentage global
+PONDERATION_PHASES = {
+    "demarrage": (0, 2),
+    "decoupage": (2, 6),
+    "transcription": (6, 72),
+    "redaction": (72, 99),
+}
+
+
+def _calculer_pourcentage(phase, courant, total):
+    bas, haut = PONDERATION_PHASES.get(phase, (0, 99))
+    fraction = (courant / total) if total else 0
+    return int(bas + (haut - bas) * fraction)
+
+
+@app.post("/transcrire-async")
+async def transcrire_async(
+    fichier: UploadFile = File(...),
+    type_reunion: str = Form("réunion générale"),
+    format: str = Form("concis"),
+):
+    # On enregistre le fichier tout de suite (on ne peut pas lire l'upload dans le thread)
+    contenu = await fichier.read()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as fichier_temp:
+        fichier_temp.write(contenu)
+        chemin_temp = fichier_temp.name
+
+    job_id = uuid.uuid4().hex
+    travaux[job_id] = {
+        "statut": "en_cours",
+        "phase": "demarrage",
+        "courant": 0,
+        "total": 1,
+        "pourcentage": 0,
+        "message": "Initialisation…",
+    }
+
+    def worker():
+        def maj_progression(phase, courant, total, message):
+            travaux[job_id].update(
+                phase=phase,
+                courant=courant,
+                total=total,
+                message=message,
+                pourcentage=_calculer_pourcentage(phase, courant, total),
+            )
+
+        try:
+            resultat = traiter_audio_complet(
+                chemin_temp, type_reunion, format, maj_progression
+            )
+            travaux[job_id].update(
+                statut="termine",
+                pourcentage=100,
+                message="Compte-rendu prêt !",
+                resultat=resultat,
+            )
+        except Exception as erreur:
+            travaux[job_id].update(statut="erreur", erreur=str(erreur))
+            print("Erreur de traitement :", erreur)
+        finally:
+            if os.path.exists(chemin_temp):
+                os.remove(chemin_temp)
+
+    threading.Thread(target=worker, daemon=True).start()
+    return {"job_id": job_id}
+
+
+@app.get("/progression/{job_id}")
+def progression(job_id: str):
+    travail = travaux.get(job_id)
+    if travail is None:
+        return {"statut": "inconnu"}
+
+    reponse = {
+        "statut": travail["statut"],
+        "phase": travail["phase"],
+        "courant": travail["courant"],
+        "total": travail["total"],
+        "pourcentage": travail["pourcentage"],
+        "message": travail["message"],
+    }
+    if travail["statut"] == "termine":
+        reponse["resultat"] = travail["resultat"]
+        travaux.pop(job_id, None)  # nettoyage après livraison
+    elif travail["statut"] == "erreur":
+        reponse["erreur"] = travail.get("erreur", "Erreur inconnue")
+        travaux.pop(job_id, None)
+    return reponse

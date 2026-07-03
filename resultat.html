@@ -86,6 +86,52 @@
   <!-- Toast de confirmation -->
   <div id="toast" class="toast cache"></div>
 
+  <!-- Assistant IA : bouton flottant -->
+  <button id="btnAssistant" class="assistant-fab cache" aria-label="Ouvrir l'assistant IA">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 3l1.9 4.8L18.7 9l-4.8 1.9L12 15.7l-1.9-4.8L5.3 9l4.8-1.2L12 3z"></path>
+      <path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8L19 14z"></path>
+    </svg>
+    <span>Assistant IA</span>
+  </button>
+
+  <!-- Panneau de chat -->
+  <div id="panneauChat" class="chat-panneau cache" role="dialog" aria-label="Assistant IA">
+    <div class="chat-entete">
+      <div class="chat-titre">
+        <span class="chat-avatar">✨</span>
+        <div>
+          <strong>Assistant Synthia</strong>
+          <em>Modifiez le compte-rendu en langage naturel</em>
+        </div>
+      </div>
+      <button id="btnFermerChat" class="chat-fermer" aria-label="Fermer">✕</button>
+    </div>
+
+    <div class="chat-messages" id="chatMessages">
+      <div class="chat-msg ia">
+        Bonjour 👋 Décrivez la modification à apporter. Par exemple : « rends-le plus formel »,
+        « ajoute une action pour Marie » ou « raccourcis le résumé ».
+      </div>
+    </div>
+
+    <div class="chat-suggestions" id="chatSuggestions">
+      <button type="button" class="chat-chip">Rendre plus formel</button>
+      <button type="button" class="chat-chip">Raccourcir le résumé</button>
+      <button type="button" class="chat-chip">Ajouter les prochaines étapes</button>
+    </div>
+
+    <form class="chat-saisie" id="chatForm">
+      <textarea id="chatInput" rows="1" placeholder="Votre demande… (Entrée pour envoyer)"></textarea>
+      <button type="submit" id="chatEnvoyer" class="chat-envoyer" aria-label="Envoyer">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="22" y1="2" x2="11" y2="13"></line>
+          <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+        </svg>
+      </button>
+    </form>
+  </div>
+
   <script>
     const CLE = "synthia_resultat";
     const elemContenu = document.getElementById("contenu");
@@ -257,6 +303,116 @@
       clearTimeout(timerToast);
       timerToast = setTimeout(() => toast.classList.add("cache"), 2200);
     }
+
+    // ================================================================
+    //  Assistant IA — modification du compte-rendu en langage naturel
+    // ================================================================
+    const btnAssistant = document.getElementById("btnAssistant");
+    const panneauChat = document.getElementById("panneauChat");
+    const btnFermerChat = document.getElementById("btnFermerChat");
+    const chatMessages = document.getElementById("chatMessages");
+    const chatForm = document.getElementById("chatForm");
+    const chatInput = document.getElementById("chatInput");
+    const chatEnvoyer = document.getElementById("chatEnvoyer");
+
+    let requeteEnCours = false;
+
+    // Le chat n'a de sens que s'il existe un compte-rendu
+    if (data) {
+      btnAssistant.classList.remove("cache");
+    }
+
+    // Ouverture / fermeture du panneau
+    btnAssistant.onclick = function () {
+      panneauChat.classList.remove("cache");
+      btnAssistant.classList.add("cache");
+      chatInput.focus();
+    };
+    btnFermerChat.onclick = function () {
+      panneauChat.classList.add("cache");
+      btnAssistant.classList.remove("cache");
+    };
+
+    // Puces de suggestion : préremplissent puis envoient
+    document.querySelectorAll(".chat-chip").forEach((chip) => {
+      chip.onclick = function () {
+        if (requeteEnCours) return;
+        chatInput.value = this.textContent;
+        chatForm.requestSubmit();
+      };
+    });
+
+    // Entrée = envoyer, Maj+Entrée = nouvelle ligne
+    chatInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        chatForm.requestSubmit();
+      }
+    });
+
+    // Ajoute une bulle au fil et renvoie l'élément
+    function ajouterMessage(auteur, html) {
+      const bulle = document.createElement("div");
+      bulle.className = "chat-msg " + auteur;
+      bulle.innerHTML = html;
+      chatMessages.appendChild(bulle);
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+      return bulle;
+    }
+
+    // Envoi de la demande au backend
+    chatForm.addEventListener("submit", async function (e) {
+      e.preventDefault();
+      const instruction = chatInput.value.trim();
+      if (!instruction || requeteEnCours || !data) return;
+
+      // Bulle utilisateur
+      ajouterMessage("utilisateur", echapper(instruction));
+      chatInput.value = "";
+
+      // Bulle IA avec indicateur de saisie
+      const bulleIa = ajouterMessage(
+        "ia",
+        '<span class="chat-typing"><i></i><i></i><i></i></span>'
+      );
+
+      // Verrouillage pendant le traitement
+      requeteEnCours = true;
+      chatEnvoyer.disabled = true;
+      chatInput.disabled = true;
+
+      // On envoie le compte-rendu ACTUEL (affiché), pour enchaîner les modifications
+      const compteRenduActuel = elemCompteRendu.innerText;
+
+      try {
+        const reponse = await fetch("http://127.0.0.1:8000/modifier-compte-rendu", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            compte_rendu: compteRenduActuel,
+            instruction: instruction,
+          }),
+        });
+        const resultat = await reponse.json();
+
+        // On remplace le compte-rendu affiché par la version modifiée
+        elemCompteRendu.innerHTML = marked.parse(resultat.compte_rendu || "");
+
+        // On bascule sur l'onglet Compte-rendu pour montrer le changement
+        document.querySelector('.onglet[data-panneau="panCR"]').click();
+
+        bulleIa.innerHTML = "✅ Compte-rendu mis à jour. Pensez à cliquer sur <strong>Enregistrer</strong> pour conserver ces changements.";
+      } catch (erreur) {
+        bulleIa.innerHTML = "❌ Une erreur est survenue. Vérifiez que le serveur est bien lancé.";
+        console.error(erreur);
+      } finally {
+        requeteEnCours = false;
+        chatEnvoyer.disabled = false;
+        chatInput.disabled = false;
+        chatInput.focus();
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+      }
+    });
   </script>
 </body>
 </html>

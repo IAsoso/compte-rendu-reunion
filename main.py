@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import whisper
@@ -6,6 +6,8 @@ import tempfile
 import os
 import uuid
 import threading
+import sqlite3
+from datetime import datetime
 from pydub import AudioSegment
 from google import genai
 from dotenv import load_dotenv
@@ -31,6 +33,91 @@ app.add_middleware(
 print("Chargement du modèle Whisper...")
 modele_whisper = whisper.load_model("base")
 print("Modèle Whisper prêt !")
+
+
+# ======================================================================
+#  BASE DE DONNÉES (SQLite) — stockage permanent des comptes-rendus
+# ======================================================================
+CHEMIN_DB = "synthia.db"
+
+
+def init_db():
+    """Crée la table si elle n'existe pas encore (appelé au démarrage)."""
+    conn = sqlite3.connect(CHEMIN_DB)
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS comptes_rendus (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            date_creation TEXT NOT NULL,
+            type_reunion  TEXT,
+            format        TEXT,
+            transcription TEXT,
+            compte_rendu  TEXT,
+            actions       TEXT
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def enregistrer_compte_rendu(type_reunion, format_souhaite, transcription, compte_rendu, actions):
+    """Insère un compte-rendu et renvoie son identifiant."""
+    conn = sqlite3.connect(CHEMIN_DB)
+    curseur = conn.execute(
+        """
+        INSERT INTO comptes_rendus
+            (date_creation, type_reunion, format, transcription, compte_rendu, actions)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (
+            datetime.now().isoformat(timespec="seconds"),
+            type_reunion,
+            format_souhaite,
+            transcription,
+            compte_rendu,
+            json.dumps(actions, ensure_ascii=False),  # liste -> texte JSON
+        ),
+    )
+    conn.commit()
+    nouvel_id = curseur.lastrowid
+    conn.close()
+    return nouvel_id
+
+
+def lister_comptes_rendus():
+    """Renvoie l'essentiel de chaque compte-rendu, du plus récent au plus ancien."""
+    conn = sqlite3.connect(CHEMIN_DB)
+    conn.row_factory = sqlite3.Row  # accès par nom de colonne
+    lignes = conn.execute(
+        "SELECT id, date_creation, type_reunion, format FROM comptes_rendus ORDER BY id DESC"
+    ).fetchall()
+    conn.close()
+    return [dict(ligne) for ligne in lignes]
+
+
+def recuperer_compte_rendu(cr_id):
+    """Renvoie un compte-rendu complet (avec actions décodées), ou None si introuvable."""
+    conn = sqlite3.connect(CHEMIN_DB)
+    conn.row_factory = sqlite3.Row
+    ligne = conn.execute(
+        "SELECT * FROM comptes_rendus WHERE id = ?", (cr_id,)
+    ).fetchone()
+    conn.close()
+    if ligne is None:
+        return None
+    compte_rendu = dict(ligne)
+    try:
+        compte_rendu["actions"] = json.loads(compte_rendu["actions"]) if compte_rendu["actions"] else []
+    except (json.JSONDecodeError, TypeError):
+        compte_rendu["actions"] = []
+    return compte_rendu
+
+
+# On prépare la base dès le démarrage du serveur
+init_db()
+
+
 # --- Fonction de NETTOYAGE de la transcription (preprocessing) ---
 def nettoyer_transcription(texte_brut):
     prompt = f"""Tu es un correcteur de transcriptions audio.
@@ -233,7 +320,11 @@ def traiter_audio_complet(chemin_audio, type_reunion, format_souhaite, maj_progr
         compte_rendu = generer_compte_rendu(texte_propre, type_reunion, format_souhaite)
         actions = extraire_actions(texte_propre)
 
+        cr_id = enregistrer_compte_rendu(
+            type_reunion, format_souhaite, texte_propre, compte_rendu, actions
+        )
         return {
+            "id": cr_id,
             "texte_brut": texte_brut,
             "texte": texte_propre,
             "compte_rendu": compte_rendu,
@@ -270,7 +361,11 @@ def traiter_audio_complet(chemin_audio, type_reunion, format_souhaite, maj_progr
     compte_rendu = generer_compte_rendu_depuis_resumes(resumes, type_reunion, format_souhaite)
     actions = extraire_actions("\n\n".join(resumes))
 
+    cr_id = enregistrer_compte_rendu(
+        type_reunion, format_souhaite, texte_complet, compte_rendu, actions
+    )
     return {
+        "id": cr_id,
         "texte_brut": texte_complet,
         "texte": texte_complet,
         "compte_rendu": compte_rendu,
@@ -436,3 +531,22 @@ def progression(job_id: str):
         reponse["erreur"] = travail.get("erreur", "Erreur inconnue")
         travaux.pop(job_id, None)
     return reponse
+
+
+# ======================================================================
+#  HISTORIQUE (lecture des comptes-rendus enregistrés)
+# ======================================================================
+
+@app.get("/historique")
+def historique():
+    """Liste tous les comptes-rendus (essentiel : id, date, type, format)."""
+    return lister_comptes_rendus()
+
+
+@app.get("/compte-rendu/{cr_id}")
+def compte_rendu_par_id(cr_id: int):
+    """Renvoie un compte-rendu complet par son identifiant."""
+    compte_rendu = recuperer_compte_rendu(cr_id)
+    if compte_rendu is None:
+        raise HTTPException(status_code=404, detail="Compte-rendu introuvable")
+    return compte_rendu

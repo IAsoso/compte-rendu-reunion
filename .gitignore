@@ -7,3 +7,7 @@ venv/
 # Fichiers temporaires Python
 __pycache__/
 *.pyc
+
+# Base de données SQLite (données locales, ne doivent pas partir en ligne)
+synthia.db
+*.db

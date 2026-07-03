@@ -858,6 +858,45 @@ html.js .reveal.visible { opacity: 1; transform: none; }
 }
 
 /* ------------------------------------------------------------------ */
+/* 9c. Navigation multi-liens + page Historique                        */
+/* ------------------------------------------------------------------ */
+
+/* Plusieurs liens à droite de l'en-tête */
+.nav-liens { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.nav-liens .lien-retour { margin-left: 0; }
+
+/* Liste de l'historique */
+.page-historique .histo-entete { margin-bottom: 28px; }
+.histo-liste { display: flex; flex-direction: column; gap: 10px; }
+
+.histo-item {
+  display: flex; align-items: center; gap: 16px; width: 100%;
+  text-align: left; font-family: inherit; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-m); padding: 16px 20px;
+  box-shadow: var(--shadow-1);
+  transition: transform 0.2s var(--ease), box-shadow 0.2s, border-color 0.2s;
+}
+.histo-item:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-2);
+  border-color: var(--line-2);
+}
+.histo-icone {
+  width: 42px; height: 42px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); border-radius: 12px; font-size: 1.2rem;
+}
+.histo-infos { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.histo-type { font-size: 1rem; font-weight: 600; color: var(--ink); letter-spacing: -0.01em; }
+.histo-date { font-size: 0.85rem; color: var(--ink-3); }
+.histo-fleche {
+  flex-shrink: 0; color: var(--ink-3); font-size: 1.1rem;
+  transition: transform 0.2s var(--ease), color 0.2s;
+}
+.histo-item:hover .histo-fleche { transform: translateX(3px); color: var(--accent); }
+
+/* ------------------------------------------------------------------ */
 /* 10. Accessibilité : mouvement réduit                                */
 /* ------------------------------------------------------------------ */
 @media (prefers-reduced-motion: reduce) {

@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Synthia — Historique</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="page-app page-historique">
+  <header>
+    <a href="index.html" class="logo-lien">
+      <div class="logo">S</div>
+      <div>
+        <h1>Synthia</h1>
+        <div class="tagline">Vos réunions, résumées par l'IA</div>
+      </div>
+    </a>
+    <nav class="nav-liens">
+      <a href="index.html" class="lien-retour">Accueil</a>
+      <a href="app.html" class="lien-retour">Nouvelle réunion →</a>
+    </nav>
+  </header>
+
+  <main class="doc">
+    <div class="histo-entete">
+      <h2 class="doc-titre">Historique des comptes-rendus</h2>
+      <p class="doc-meta" id="histoSousTitre">Chargement…</p>
+    </div>
+
+    <!-- Liste -->
+    <div id="liste" class="histo-liste"></div>
+
+    <!-- État vide -->
+    <div id="etatVide" class="etat-vide cache">
+      <div class="etat-vide-icone">🗂️</div>
+      <h2>Aucun compte-rendu enregistré</h2>
+      <p>Vos comptes-rendus apparaîtront ici après votre première réunion.</p>
+      <a href="app.html" class="cta">🎙️ Créer un compte-rendu</a>
+    </div>
+
+    <!-- État erreur -->
+    <div id="etatErreur" class="etat-vide cache">
+      <div class="etat-vide-icone">⚠️</div>
+      <h2>Impossible de charger l'historique</h2>
+      <p>Vérifiez que le serveur est bien lancé, puis réessayez.</p>
+    </div>
+  </main>
+
+  <script>
+    const API = "http://127.0.0.1:8000";
+    const liste = document.getElementById("liste");
+    const sousTitre = document.getElementById("histoSousTitre");
+    const etatVide = document.getElementById("etatVide");
+    const etatErreur = document.getElementById("etatErreur");
+
+    // Format de date lisible en français
+    function formaterDate(iso) {
+      const dt = new Date(iso);
+      if (isNaN(dt)) return iso || "";
+      return dt.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" }) +
+        " à " + dt.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function capitaliser(txt) {
+      return txt ? txt.charAt(0).toUpperCase() + txt.slice(1) : "Réunion";
+    }
+
+    // Chargement de la liste
+    async function chargerHistorique() {
+      try {
+        const reponse = await fetch(API + "/historique");
+        const comptes = await reponse.json();
+
+        if (!Array.isArray(comptes) || comptes.length === 0) {
+          sousTitre.textContent = "";
+          etatVide.classList.remove("cache");
+          return;
+        }
+
+        sousTitre.textContent =
+          comptes.length + (comptes.length > 1 ? " comptes-rendus enregistrés" : " compte-rendu enregistré");
+
+        comptes.forEach((cr) => {
+          const item = document.createElement("button");
+          item.className = "histo-item";
+          item.innerHTML = `
+            <span class="histo-icone">📄</span>
+            <span class="histo-infos">
+              <span class="histo-type">${capitaliser(cr.type_reunion)}</span>
+              <span class="histo-date">${formaterDate(cr.date_creation)}${cr.format ? "  ·  " + cr.format : ""}</span>
+            </span>
+            <span class="histo-fleche" aria-hidden="true">→</span>
+          `;
+          item.onclick = () => ouvrirCompteRendu(cr.id);
+          liste.appendChild(item);
+        });
+      } catch (erreur) {
+        sousTitre.textContent = "";
+        etatErreur.classList.remove("cache");
+        console.error(erreur);
+      }
+    }
+
+    // Ouverture d'un compte-rendu : on le recharge puis on redirige vers resultat.html
+    async function ouvrirCompteRendu(id) {
+      try {
+        const reponse = await fetch(API + "/compte-rendu/" + id);
+        if (!reponse.ok) throw new Error("introuvable");
+        const cr = await reponse.json();
+
+        const donneesResultat = {
+          id: cr.id,
+          texte: cr.transcription || "",
+          compte_rendu: cr.compte_rendu || "",
+          actions: cr.actions || [],
+          type_reunion: cr.type_reunion || "",
+          format: cr.format || "",
+          date: cr.date_creation || "",
+        };
+        sessionStorage.setItem("synthia_resultat", JSON.stringify(donneesResultat));
+        window.location.href = "resultat.html";
+      } catch (erreur) {
+        alert("Impossible d'ouvrir ce compte-rendu.");
+        console.error(erreur);
+      }
+    }
+
+    chargerHistorique();
+  </script>
+</body>
+</html>

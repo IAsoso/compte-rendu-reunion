@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
 </head>
 <body class="page-app page-historique">
   <header>
@@ -50,7 +51,7 @@
   </main>
 
   <script>
-    const API = "http://127.0.0.1:8000";
+    const API = window.API_BASE_URL;
     const liste = document.getElementById("liste");
     const sousTitre = document.getElementById("histoSousTitre");
     const etatVide = document.getElementById("etatVide");

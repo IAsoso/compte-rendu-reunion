@@ -8,7 +8,12 @@ import threading
 import sqlite3
 from datetime import datetime
 from pydub import AudioSegment
+import imageio_ffmpeg
 from google import genai
+
+# FFmpeg n'est pas installé sur le système (ni en local Windows, ni sur Render).
+# On pointe pydub vers le binaire FFmpeg embarqué par le paquet imageio-ffmpeg.
+AudioSegment.converter = imageio_ffmpeg.get_ffmpeg_exe()
 import groq
 from groq import Groq
 from dotenv import load_dotenv
@@ -28,9 +33,16 @@ MODELE_TRANSCRIPTION = "whisper-large-v3-turbo"
 
 # --- App + CORS ---
 app = FastAPI()
+
+# Origines autorisées : configurables via FRONTEND_URL (une ou plusieurs URLs
+# séparées par des virgules). Si la variable est absente/vide, on retombe sur
+# "*" — pratique en développement local.
+origines_env = os.getenv("FRONTEND_URL", "")
+origines_autorisees = [o.strip() for o in origines_env.split(",") if o.strip()] or ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origines_autorisees,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -42,7 +54,13 @@ print("Backend prêt — transcription via l'API Groq.")
 # ======================================================================
 #  BASE DE DONNÉES (SQLite) — stockage permanent des comptes-rendus
 # ======================================================================
-CHEMIN_DB = "synthia.db"
+# Chemin de la base : résolu par rapport à ce fichier (robuste quel que soit le
+# répertoire de lancement), surchargeable via DB_PATH — utile sur Render pour
+# pointer vers un disque persistant monté (ex. /var/data/synthia.db).
+CHEMIN_DB = os.getenv(
+    "DB_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "synthia.db"),
+)
 
 
 def init_db():
@@ -579,3 +597,17 @@ def compte_rendu_par_id(cr_id: int):
     if compte_rendu is None:
         raise HTTPException(status_code=404, detail="Compte-rendu introuvable")
     return compte_rendu
+
+
+# ======================================================================
+#  LANCEMENT DIRECT (python main.py)
+# ----------------------------------------------------------------------
+#  Render fournit le port d'écoute via la variable d'environnement PORT.
+#  On écoute sur 0.0.0.0 pour être joignable depuis l'extérieur du conteneur.
+#  En local, PORT est absent -> repli sur 8000.
+# ======================================================================
+if __name__ == "__main__":
+    import uvicorn
+
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)

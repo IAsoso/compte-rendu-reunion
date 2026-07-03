@@ -7,4 +7,4 @@
 //  - En production (Render)    : remplacez par l'URL du Web Service backend,
 //    par exemple  https://synthia-api.onrender.com  (SANS slash final).
 // ======================================================================
-window.API_BASE_URL = "http://127.0.0.1:8000";
+window.API_BASE_URL = "https://compte-rendu-reunionsynthia-api.onrender.com";

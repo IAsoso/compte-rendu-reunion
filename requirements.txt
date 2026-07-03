@@ -1,0 +1,23 @@
+# Synthia — dépendances Python
+# (Transcription déportée sur l'API Groq : plus de Whisper/torch en local.)
+#
+# Prérequis système : FFmpeg doit être installé et accessible dans le PATH
+# (utilisé par pydub pour décoder et découper l'audio). FFmpeg n'est pas un
+# paquet pip.
+
+# --- API web ---
+fastapi==0.138.1
+uvicorn==0.49.0
+python-multipart==0.0.32     # upload de fichiers (UploadFile / Form)
+pydantic==2.13.4
+
+# --- IA ---
+groq==1.5.0                  # transcription (Whisper large v3 turbo via API)
+google-genai==2.10.0         # nettoyage, résumé, actions, chat (Gemini)
+
+# --- Audio ---
+pydub==0.25.1                # découpage des longues réunions
+audioop-lts==0.2.2           # backport du module audioop (requis en Python 3.13+)
+
+# --- Configuration ---
+python-dotenv==1.2.2         # lecture du fichier .env (clés d'API)

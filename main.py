@@ -1,7 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-import whisper
 import tempfile
 import os
 import uuid
@@ -10,6 +9,8 @@ import sqlite3
 from datetime import datetime
 from pydub import AudioSegment
 from google import genai
+import groq
+from groq import Groq
 from dotenv import load_dotenv
 import json
 
@@ -20,6 +21,11 @@ cle_gemini = os.getenv("GEMINI_API_KEY")
 # On configure Gemini avec la clé
 client_gemini = genai.Client(api_key=cle_gemini)
 
+# On configure Groq (transcription via l'API Whisper large v3 turbo)
+cle_groq = os.getenv("GROQ_API_KEY")
+client_groq = Groq(api_key=cle_groq)
+MODELE_TRANSCRIPTION = "whisper-large-v3-turbo"
+
 # --- App + CORS ---
 app = FastAPI()
 app.add_middleware(
@@ -29,10 +35,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Chargement de Whisper (une seule fois) ---
-print("Chargement du modèle Whisper...")
-modele_whisper = whisper.load_model("base")
-print("Modèle Whisper prêt !")
+# --- Transcription déportée sur l'API Groq (plus de modèle local) ---
+print("Backend prêt — transcription via l'API Groq.")
 
 
 # ======================================================================
@@ -243,7 +247,8 @@ def decouper_audio(audio):
     for i in range(len(points) - 1):
         morceau = audio[points[i]:points[i + 1]]
         fichier_temp = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-        morceau.export(fichier_temp.name, format="wav")
+        # 16 kHz mono : suffisant pour Whisper et bien plus léger à uploader
+        morceau.set_frame_rate(16000).set_channels(1).export(fichier_temp.name, format="wav")
         fichier_temp.close()
         chemins.append(fichier_temp.name)
     return chemins
@@ -302,6 +307,29 @@ Notes des différentes parties :
     return reponse.text
 
 
+def transcrire_audio_groq(chemin_audio):
+    """Transcrit un fichier audio via l'API Groq (Whisper large v3 turbo).
+    Lève une RuntimeError avec un message clair en cas d'échec."""
+    try:
+        with open(chemin_audio, "rb") as fichier:
+            transcription = client_groq.audio.transcriptions.create(
+                file=(os.path.basename(chemin_audio), fichier.read()),
+                model=MODELE_TRANSCRIPTION,
+                language="fr",
+            )
+        return transcription.text
+    except groq.AuthenticationError:
+        raise RuntimeError("Clé API Groq invalide ou manquante (GROQ_API_KEY).")
+    except groq.RateLimitError:
+        raise RuntimeError("Quota Groq dépassé, réessayez dans un instant.")
+    except groq.APIConnectionError:
+        raise RuntimeError("Impossible de joindre l'API Groq (problème de connexion).")
+    except groq.APIStatusError as erreur:
+        raise RuntimeError(f"Erreur de l'API Groq (code {erreur.status_code}).")
+    except Exception as erreur:  # filet de sécurité
+        raise RuntimeError(f"Échec de la transcription Groq : {erreur}")
+
+
 def traiter_audio_complet(chemin_audio, type_reunion, format_souhaite, maj_progression):
     """Traite un audio de bout en bout. Aiguille vers le flux court (existant) ou
     le flux long (découpage + map-reduce). `maj_progression(phase, courant, total, message)`
@@ -312,8 +340,7 @@ def traiter_audio_complet(chemin_audio, type_reunion, format_souhaite, maj_progr
     # ---------- Audio COURT : flux existant, inchangé ----------
     if duree <= DUREE_TRANCHE_MS:
         maj_progression("transcription", 0, 1, "Transcription en cours…")
-        resultat = modele_whisper.transcribe(chemin_audio, language="fr")
-        texte_brut = resultat["text"]
+        texte_brut = transcrire_audio_groq(chemin_audio)
 
         maj_progression("redaction", 0, 1, "Rédaction du compte-rendu…")
         texte_propre = nettoyer_transcription(texte_brut)
@@ -341,8 +368,7 @@ def traiter_audio_complet(chemin_audio, type_reunion, format_souhaite, maj_progr
     try:
         for i, chemin_morceau in enumerate(morceaux):
             maj_progression("transcription", i, total, f"Transcription {i + 1}/{total}…")
-            resultat = modele_whisper.transcribe(chemin_morceau, language="fr")
-            transcriptions.append(resultat["text"].strip())
+            transcriptions.append(transcrire_audio_groq(chemin_morceau).strip())
         maj_progression("transcription", total, total, "Transcription terminée")
     finally:
         for chemin_morceau in morceaux:
@@ -394,8 +420,11 @@ async def transcrire(
         resultat = traiter_audio_complet(
             chemin_temp, type_reunion, format, sans_progression
         )
+    except RuntimeError as erreur:
+        raise HTTPException(status_code=502, detail=str(erreur))
     finally:
-        os.remove(chemin_temp)
+        if os.path.exists(chemin_temp):
+            os.remove(chemin_temp)
 
     return resultat
 

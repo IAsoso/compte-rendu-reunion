@@ -1,12 +1,14 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 import tempfile
 import os
 import uuid
 import threading
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from passlib.context import CryptContext
+import jwt
 from pydub import AudioSegment
 import imageio_ffmpeg
 from google import genai
@@ -30,6 +32,64 @@ client_gemini = genai.Client(api_key=cle_gemini)
 cle_groq = os.getenv("GROQ_API_KEY")
 client_groq = Groq(api_key=cle_groq)
 MODELE_TRANSCRIPTION = "whisper-large-v3-turbo"
+
+# ======================================================================
+#  AUTHENTIFICATION (comptes email / mot de passe)
+# ----------------------------------------------------------------------
+#  - bcrypt : hachage à sens unique des mots de passe (jamais en clair).
+#  - JWT    : jeton signé (HS256) prouvant l'identité, sans session serveur.
+# ======================================================================
+
+# Contexte de hachage : bcrypt, sel aléatoire par mot de passe géré en interne.
+contexte_mdp = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+# Clé secrète de signature des JWT — OBLIGATOIRE, jamais commitée (.env / Render).
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
+if not JWT_SECRET_KEY:
+    raise RuntimeError(
+        "JWT_SECRET_KEY manquante. Ajoutez-la dans .env (local) ou dans les "
+        "variables d'environnement Render avant de démarrer le backend."
+    )
+JWT_ALGORITHME = "HS256"
+JWT_DUREE_JOURS = 7  # durée de validité d'un jeton avant reconnexion
+
+
+def hacher_mot_de_passe(mot_de_passe: str) -> str:
+    """Renvoie le hash bcrypt (avec sel) d'un mot de passe en clair."""
+    return contexte_mdp.hash(mot_de_passe)
+
+
+def verifier_mot_de_passe(mot_de_passe: str, hash_stocke: str) -> bool:
+    """Vérifie qu'un mot de passe en clair correspond au hash stocké."""
+    return contexte_mdp.verify(mot_de_passe, hash_stocke)
+
+
+def creer_token(user_id: int) -> str:
+    """Génère un JWT signé contenant l'id utilisateur et une date d'expiration."""
+    maintenant = datetime.now(timezone.utc)
+    charge_utile = {
+        "sub": str(user_id),                               # identifiant du compte
+        "iat": maintenant,                                 # émis à
+        "exp": maintenant + timedelta(days=JWT_DUREE_JOURS),  # expire à
+    }
+    return jwt.encode(charge_utile, JWT_SECRET_KEY, algorithm=JWT_ALGORITHME)
+
+
+def utilisateur_courant(authorization: str = Header(default="")) -> int:
+    """Dépendance FastAPI : lit l'en-tête « Authorization: Bearer <token> »,
+    vérifie la signature et l'expiration, renvoie l'id de l'utilisateur.
+    Lève 401 si le jeton est absent, invalide ou expiré."""
+    if not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Jeton d'authentification manquant.")
+    token = authorization[len("Bearer "):].strip()
+    try:
+        charge_utile = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHME])
+        return int(charge_utile["sub"])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Session expirée, reconnectez-vous.")
+    except (jwt.InvalidTokenError, KeyError, ValueError):
+        raise HTTPException(status_code=401, detail="Jeton d'authentification invalide.")
+
 
 # --- App + CORS ---
 app = FastAPI()
@@ -64,8 +124,10 @@ CHEMIN_DB = os.getenv(
 
 
 def init_db():
-    """Crée la table si elle n'existe pas encore (appelé au démarrage)."""
+    """Crée/migre les tables au démarrage (idempotent)."""
     conn = sqlite3.connect(CHEMIN_DB)
+
+    # Table des comptes-rendus (existante).
     conn.execute(
         """
         CREATE TABLE IF NOT EXISTS comptes_rendus (
@@ -79,18 +141,72 @@ def init_db():
         )
         """
     )
+
+    # Table des utilisateurs (comptes email / mot de passe).
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS utilisateurs (
+            id                INTEGER PRIMARY KEY AUTOINCREMENT,
+            email             TEXT NOT NULL UNIQUE,
+            mot_de_passe_hash TEXT NOT NULL,
+            date_creation     TEXT NOT NULL
+        )
+        """
+    )
+
+    # Migration : ajoute user_id à comptes_rendus si la colonne n'existe pas
+    # encore. Les comptes-rendus déjà présents restent à NULL (orphelins) :
+    # ils ne sont ni supprimés, ni rattachés automatiquement.
+    colonnes = {ligne[1] for ligne in conn.execute("PRAGMA table_info(comptes_rendus)")}
+    if "user_id" not in colonnes:
+        conn.execute(
+            "ALTER TABLE comptes_rendus "
+            "ADD COLUMN user_id INTEGER REFERENCES utilisateurs(id)"
+        )
+
     conn.commit()
     conn.close()
 
 
-def enregistrer_compte_rendu(type_reunion, format_souhaite, transcription, compte_rendu, actions):
-    """Insère un compte-rendu et renvoie son identifiant."""
+# ----------------------------------------------------------------------
+#  Accès à la table utilisateurs
+# ----------------------------------------------------------------------
+def creer_utilisateur(email, mot_de_passe_hash):
+    """Insère un nouvel utilisateur et renvoie son id. Lève sqlite3.IntegrityError
+    si l'email existe déjà (contrainte UNIQUE)."""
+    conn = sqlite3.connect(CHEMIN_DB)
+    try:
+        curseur = conn.execute(
+            "INSERT INTO utilisateurs (email, mot_de_passe_hash, date_creation) "
+            "VALUES (?, ?, ?)",
+            (email, mot_de_passe_hash, datetime.now().isoformat(timespec="seconds")),
+        )
+        conn.commit()
+        return curseur.lastrowid
+    finally:
+        conn.close()
+
+
+def get_utilisateur_par_email(email):
+    """Renvoie {id, email, mot_de_passe_hash} pour un email, ou None si absent."""
+    conn = sqlite3.connect(CHEMIN_DB)
+    conn.row_factory = sqlite3.Row
+    ligne = conn.execute(
+        "SELECT id, email, mot_de_passe_hash FROM utilisateurs WHERE email = ?",
+        (email,),
+    ).fetchone()
+    conn.close()
+    return dict(ligne) if ligne else None
+
+
+def enregistrer_compte_rendu(user_id, type_reunion, format_souhaite, transcription, compte_rendu, actions):
+    """Insère un compte-rendu rattaché à un utilisateur et renvoie son identifiant."""
     conn = sqlite3.connect(CHEMIN_DB)
     curseur = conn.execute(
         """
         INSERT INTO comptes_rendus
-            (date_creation, type_reunion, format, transcription, compte_rendu, actions)
-        VALUES (?, ?, ?, ?, ?, ?)
+            (date_creation, type_reunion, format, transcription, compte_rendu, actions, user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             datetime.now().isoformat(timespec="seconds"),
@@ -99,6 +215,7 @@ def enregistrer_compte_rendu(type_reunion, format_souhaite, transcription, compt
             transcription,
             compte_rendu,
             json.dumps(actions, ensure_ascii=False),  # liste -> texte JSON
+            user_id,
         ),
     )
     conn.commit()
@@ -107,23 +224,26 @@ def enregistrer_compte_rendu(type_reunion, format_souhaite, transcription, compt
     return nouvel_id
 
 
-def lister_comptes_rendus():
-    """Renvoie l'essentiel de chaque compte-rendu, du plus récent au plus ancien."""
+def lister_comptes_rendus(user_id):
+    """Renvoie l'essentiel des comptes-rendus DE CET UTILISATEUR, du + récent au + ancien."""
     conn = sqlite3.connect(CHEMIN_DB)
     conn.row_factory = sqlite3.Row  # accès par nom de colonne
     lignes = conn.execute(
-        "SELECT id, date_creation, type_reunion, format FROM comptes_rendus ORDER BY id DESC"
+        "SELECT id, date_creation, type_reunion, format FROM comptes_rendus "
+        "WHERE user_id = ? ORDER BY id DESC",
+        (user_id,),
     ).fetchall()
     conn.close()
     return [dict(ligne) for ligne in lignes]
 
 
-def recuperer_compte_rendu(cr_id):
-    """Renvoie un compte-rendu complet (avec actions décodées), ou None si introuvable."""
+def recuperer_compte_rendu(cr_id, user_id):
+    """Renvoie un compte-rendu complet SEULEMENT s'il appartient à l'utilisateur,
+    sinon None (isolation stricte : on ne révèle pas l'existence des CR d'autrui)."""
     conn = sqlite3.connect(CHEMIN_DB)
     conn.row_factory = sqlite3.Row
     ligne = conn.execute(
-        "SELECT * FROM comptes_rendus WHERE id = ?", (cr_id,)
+        "SELECT * FROM comptes_rendus WHERE id = ? AND user_id = ?", (cr_id, user_id)
     ).fetchone()
     conn.close()
     if ligne is None:
@@ -348,10 +468,11 @@ def transcrire_audio_groq(chemin_audio):
         raise RuntimeError(f"Échec de la transcription Groq : {erreur}")
 
 
-def traiter_audio_complet(chemin_audio, type_reunion, format_souhaite, maj_progression):
+def traiter_audio_complet(chemin_audio, type_reunion, format_souhaite, maj_progression, user_id):
     """Traite un audio de bout en bout. Aiguille vers le flux court (existant) ou
     le flux long (découpage + map-reduce). `maj_progression(phase, courant, total, message)`
-    est appelé régulièrement pour suivre l'avancement."""
+    est appelé régulièrement pour suivre l'avancement. Le compte-rendu produit est
+    rattaché à `user_id`."""
     audio = AudioSegment.from_file(chemin_audio)
     duree = len(audio)
 
@@ -366,7 +487,7 @@ def traiter_audio_complet(chemin_audio, type_reunion, format_souhaite, maj_progr
         actions = extraire_actions(texte_propre)
 
         cr_id = enregistrer_compte_rendu(
-            type_reunion, format_souhaite, texte_propre, compte_rendu, actions
+            user_id, type_reunion, format_souhaite, texte_propre, compte_rendu, actions
         )
         return {
             "id": cr_id,
@@ -406,7 +527,7 @@ def traiter_audio_complet(chemin_audio, type_reunion, format_souhaite, maj_progr
     actions = extraire_actions("\n\n".join(resumes))
 
     cr_id = enregistrer_compte_rendu(
-        type_reunion, format_souhaite, texte_complet, compte_rendu, actions
+        user_id, type_reunion, format_souhaite, texte_complet, compte_rendu, actions
     )
     return {
         "id": cr_id,
@@ -423,6 +544,7 @@ async def transcrire(
     fichier: UploadFile = File(...),
     type_reunion: str = Form("réunion générale"),
     format: str = Form("concis"),
+    user_id: int = Depends(utilisateur_courant),
 ):
     contenu = await fichier.read()
 
@@ -436,7 +558,7 @@ async def transcrire(
 
     try:
         resultat = traiter_audio_complet(
-            chemin_temp, type_reunion, format, sans_progression
+            chemin_temp, type_reunion, format, sans_progression, user_id
         )
     except RuntimeError as erreur:
         raise HTTPException(status_code=502, detail=str(erreur))
@@ -451,6 +573,52 @@ async def transcrire(
 @app.get("/")
 def accueil():
     return {"message": "Le backend fonctionne !"}
+
+
+# ======================================================================
+#  ROUTES D'AUTHENTIFICATION
+# ======================================================================
+class IdentifiantsAuth(BaseModel):
+    email: EmailStr          # format d'email validé automatiquement
+    mot_de_passe: str
+
+
+@app.post("/inscription")
+def inscription(identifiants: IdentifiantsAuth):
+    """Crée un compte : hache le mot de passe, enregistre l'utilisateur,
+    renvoie un JWT. Refuse si l'email est déjà pris."""
+    email = identifiants.email.lower().strip()
+
+    if len(identifiants.mot_de_passe) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Le mot de passe doit contenir au moins 8 caractères.",
+        )
+
+    hash_mdp = hacher_mot_de_passe(identifiants.mot_de_passe)
+    try:
+        user_id = creer_utilisateur(email, hash_mdp)
+    except sqlite3.IntegrityError:
+        # Contrainte UNIQUE sur email : compte déjà existant.
+        raise HTTPException(status_code=409, detail="Un compte existe déjà avec cet email.")
+
+    return {"token": creer_token(user_id), "email": email}
+
+
+@app.post("/connexion")
+def connexion(identifiants: IdentifiantsAuth):
+    """Vérifie l'email + le mot de passe et renvoie un JWT si valides."""
+    email = identifiants.email.lower().strip()
+    utilisateur = get_utilisateur_par_email(email)
+
+    # Message identique que l'email existe ou non : on ne révèle pas quels
+    # emails sont enregistrés (évite l'énumération de comptes).
+    if utilisateur is None or not verifier_mot_de_passe(
+        identifiants.mot_de_passe, utilisateur["mot_de_passe_hash"]
+    ):
+        raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect.")
+
+    return {"token": creer_token(utilisateur["id"]), "email": email}
 
 
 # --- Modification du compte-rendu par IA (chat en langage naturel) ---
@@ -475,7 +643,11 @@ Compte-rendu actuel :
 
 
 @app.post("/modifier-compte-rendu")
-def modifier_compte_rendu(demande: DemandeModification):
+def modifier_compte_rendu(
+    demande: DemandeModification,
+    user_id: int = Depends(utilisateur_courant),
+):
+    # Protégé : appel IA payant, réservé aux utilisateurs connectés.
     compte_rendu_modifie = modifier_compte_rendu_ia(
         demande.compte_rendu, demande.instruction
     )
@@ -509,6 +681,7 @@ async def transcrire_async(
     fichier: UploadFile = File(...),
     type_reunion: str = Form("réunion générale"),
     format: str = Form("concis"),
+    user_id: int = Depends(utilisateur_courant),
 ):
     # On enregistre le fichier tout de suite (on ne peut pas lire l'upload dans le thread)
     contenu = await fichier.read()
@@ -524,6 +697,7 @@ async def transcrire_async(
         "total": 1,
         "pourcentage": 0,
         "message": "Initialisation…",
+        "user_id": user_id,   # propriétaire du job (isolation sur /progression)
     }
 
     def worker():
@@ -538,7 +712,7 @@ async def transcrire_async(
 
         try:
             resultat = traiter_audio_complet(
-                chemin_temp, type_reunion, format, maj_progression
+                chemin_temp, type_reunion, format, maj_progression, user_id
             )
             travaux[job_id].update(
                 statut="termine",
@@ -558,9 +732,14 @@ async def transcrire_async(
 
 
 @app.get("/progression/{job_id}")
-def progression(job_id: str):
+def progression(job_id: str, user_id: int = Depends(utilisateur_courant)):
     travail = travaux.get(job_id)
     if travail is None:
+        return {"statut": "inconnu"}
+
+    # Isolation : un utilisateur ne peut suivre que ses propres travaux.
+    # On répond « inconnu » (et non 403) pour ne pas révéler l'existence du job.
+    if travail.get("user_id") != user_id:
         return {"statut": "inconnu"}
 
     reponse = {
@@ -585,15 +764,15 @@ def progression(job_id: str):
 # ======================================================================
 
 @app.get("/historique")
-def historique():
-    """Liste tous les comptes-rendus (essentiel : id, date, type, format)."""
-    return lister_comptes_rendus()
+def historique(user_id: int = Depends(utilisateur_courant)):
+    """Liste les comptes-rendus de l'utilisateur connecté (id, date, type, format)."""
+    return lister_comptes_rendus(user_id)
 
 
 @app.get("/compte-rendu/{cr_id}")
-def compte_rendu_par_id(cr_id: int):
-    """Renvoie un compte-rendu complet par son identifiant."""
-    compte_rendu = recuperer_compte_rendu(cr_id)
+def compte_rendu_par_id(cr_id: int, user_id: int = Depends(utilisateur_courant)):
+    """Renvoie un compte-rendu complet SEULEMENT s'il appartient à l'utilisateur."""
+    compte_rendu = recuperer_compte_rendu(cr_id, user_id)
     if compte_rendu is None:
         raise HTTPException(status_code=404, detail="Compte-rendu introuvable")
     return compte_rendu

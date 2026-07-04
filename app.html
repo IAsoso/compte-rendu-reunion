@@ -9,6 +9,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <script src="config.js"></script>
+  <script src="auth.js"></script>
+  <!-- Page protégée : sans jeton valide, on redirige vers la connexion. -->
+  <script>exigerAuth();</script>
 </head>
 <body class="page-record">
   <header>
@@ -22,6 +25,7 @@
     <nav class="nav-liens">
       <a href="historique.html" class="lien-retour">Historique</a>
       <a href="index.html" class="lien-retour">← Accueil</a>
+      <a href="#" class="lien-retour" onclick="deconnexion(); return false;">Se déconnecter</a>
     </nav>
   </header>
 
@@ -173,7 +177,7 @@
 
       try {
         // 1. On lance le traitement : le backend répond aussitôt avec un job_id
-        const reponse = await fetch(API_BASE_URL + "/transcrire-async", {
+        const reponse = await fetchAuth(API_BASE_URL + "/transcrire-async", {
           method: "POST",
           body: donnees,
         });
@@ -190,7 +194,7 @@
     function suivreProgression(jobId, typeReunion, format) {
       const sonder = async function () {
         try {
-          const reponse = await fetch(API_BASE_URL + "/progression/" + jobId);
+          const reponse = await fetchAuth(API_BASE_URL + "/progression/" + jobId);
           const p = await reponse.json();
 
           if (p.statut === "termine") {

@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Synthia — Créer un compte</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
+  <script src="auth.js"></script>
+  <!-- Déjà connecté ? On va directement à l'app. -->
+  <script>if (getToken()) window.location.href = "app.html";</script>
+</head>
+<body class="page-auth">
+  <header>
+    <a href="index.html" class="logo-lien">
+      <div class="logo">S</div>
+      <div>
+        <h1>Synthia</h1>
+        <div class="tagline">Vos réunions, résumées par l'IA</div>
+      </div>
+    </a>
+    <nav class="nav-liens">
+      <a href="index.html" class="lien-retour">← Accueil</a>
+    </nav>
+  </header>
+
+  <main>
+    <form class="carte-auth rise" id="formInscription" novalidate>
+      <h2 class="auth-titre">Créer un compte</h2>
+      <p class="auth-sous-titre">Commencez à générer vos comptes-rendus en quelques secondes.</p>
+
+      <div class="champ">
+        <label for="email">Email</label>
+        <input type="email" id="email" autocomplete="email" placeholder="vous@exemple.com" required>
+      </div>
+      <div class="champ">
+        <label for="motDePasse">Mot de passe</label>
+        <input type="password" id="motDePasse" autocomplete="new-password" placeholder="Au moins 8 caractères" required>
+      </div>
+
+      <button type="submit" class="cta btn-auth" id="btnInscription">Créer mon compte</button>
+      <p class="auth-message" id="message"></p>
+
+      <p class="auth-bascule">
+        Vous avez déjà un compte ? <a href="connexion.html">Se connecter</a>
+      </p>
+    </form>
+  </main>
+
+  <script>
+    const form = document.getElementById("formInscription");
+    const bouton = document.getElementById("btnInscription");
+    const message = document.getElementById("message");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      message.className = "auth-message";
+      message.textContent = "";
+
+      const email = document.getElementById("email").value.trim();
+      const motDePasse = document.getElementById("motDePasse").value;
+
+      // Contrôle côté client (le backend revérifie de toute façon).
+      if (motDePasse.length < 8) {
+        message.classList.add("erreur");
+        message.textContent = "Le mot de passe doit contenir au moins 8 caractères.";
+        return;
+      }
+
+      bouton.disabled = true;
+      bouton.textContent = "Création…";
+      try {
+        const reponse = await fetch(API_BASE_URL + "/inscription", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email, mot_de_passe: motDePasse }),
+        });
+        const donnees = await reponse.json();
+
+        if (!reponse.ok) {
+          message.classList.add("erreur");
+          // detail peut être une chaîne (nos erreurs) ou une liste (validation Pydantic)
+          message.textContent = typeof donnees.detail === "string"
+            ? donnees.detail
+            : "Vérifiez le format de votre email.";
+          return;
+        }
+
+        setToken(donnees.token);
+        window.location.href = "app.html";
+      } catch (erreur) {
+        message.classList.add("erreur");
+        message.textContent = "Serveur injoignable. Réessayez dans un instant.";
+      } finally {
+        bouton.disabled = false;
+        bouton.textContent = "Créer mon compte";
+      }
+    });
+  </script>
+</body>
+</html>

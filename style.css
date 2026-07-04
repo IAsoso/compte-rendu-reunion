@@ -908,3 +908,62 @@ html.js .reveal.visible { opacity: 1; transform: none; }
   html { scroll-behavior: auto; }
   .rise, .reveal { opacity: 1 !important; transform: none !important; }
 }
+
+/* ------------------------------------------------------------------ */
+/* 11. AUTHENTIFICATION (connexion / inscription)                      */
+/* ------------------------------------------------------------------ */
+.page-auth main {
+  display: flex; align-items: center; justify-content: center;
+  padding: 56px 20px 80px;
+}
+
+.carte-auth {
+  width: 100%; max-width: 420px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-l);
+  box-shadow: var(--shadow-3);
+  padding: 40px 34px;
+}
+
+.carte-auth .auth-titre {
+  font-size: 1.6rem; font-weight: 800; letter-spacing: -0.02em;
+  color: var(--ink); margin-bottom: 6px;
+}
+.carte-auth .auth-sous-titre {
+  font-size: 0.95rem; color: var(--ink-2); margin-bottom: 28px;
+}
+
+.champ { display: flex; flex-direction: column; gap: 7px; margin-bottom: 18px; }
+.champ label { font-size: 0.85rem; font-weight: 600; color: var(--ink-2); }
+.champ input {
+  font: inherit; font-size: 0.98rem; color: var(--ink);
+  padding: 12px 14px; border-radius: var(--r-s);
+  border: 1px solid var(--line-2); background: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.champ input:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+.btn-auth {
+  width: 100%; justify-content: center;
+  border: none; cursor: pointer; margin-top: 8px;
+}
+.btn-auth:disabled { opacity: 0.6; cursor: default; transform: none; box-shadow: var(--shadow-accent); }
+
+.auth-message {
+  min-height: 20px; margin: 14px 2px 0;
+  font-size: 0.9rem; text-align: center;
+}
+.auth-message.erreur { color: var(--danger); }
+.auth-message.succes { color: var(--accent); }
+
+.auth-bascule {
+  margin-top: 24px; padding-top: 20px;
+  border-top: 1px solid var(--line);
+  text-align: center; font-size: 0.92rem; color: var(--ink-2);
+}
+.auth-bascule a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.auth-bascule a:hover { text-decoration: underline; }

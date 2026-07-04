@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Synthia — Connexion</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
+  <script src="auth.js"></script>
+  <!-- Déjà connecté ? On va directement à l'app. -->
+  <script>if (getToken()) window.location.href = "app.html";</script>
+</head>
+<body class="page-auth">
+  <header>
+    <a href="index.html" class="logo-lien">
+      <div class="logo">S</div>
+      <div>
+        <h1>Synthia</h1>
+        <div class="tagline">Vos réunions, résumées par l'IA</div>
+      </div>
+    </a>
+    <nav class="nav-liens">
+      <a href="index.html" class="lien-retour">← Accueil</a>
+    </nav>
+  </header>
+
+  <main>
+    <form class="carte-auth rise" id="formConnexion" novalidate>
+      <h2 class="auth-titre">Bon retour 👋</h2>
+      <p class="auth-sous-titre">Connectez-vous pour accéder à vos comptes-rendus.</p>
+
+      <div class="champ">
+        <label for="email">Email</label>
+        <input type="email" id="email" autocomplete="email" placeholder="vous@exemple.com" required>
+      </div>
+      <div class="champ">
+        <label for="motDePasse">Mot de passe</label>
+        <input type="password" id="motDePasse" autocomplete="current-password" placeholder="••••••••" required>
+      </div>
+
+      <button type="submit" class="cta btn-auth" id="btnConnexion">Se connecter</button>
+      <p class="auth-message" id="message"></p>
+
+      <p class="auth-bascule">
+        Pas encore de compte ? <a href="inscription.html">Créer un compte</a>
+      </p>
+    </form>
+  </main>
+
+  <script>
+    const form = document.getElementById("formConnexion");
+    const bouton = document.getElementById("btnConnexion");
+    const message = document.getElementById("message");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      message.className = "auth-message";
+      message.textContent = "";
+
+      const email = document.getElementById("email").value.trim();
+      const motDePasse = document.getElementById("motDePasse").value;
+
+      bouton.disabled = true;
+      bouton.textContent = "Connexion…";
+      try {
+        const reponse = await fetch(API_BASE_URL + "/connexion", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email, mot_de_passe: motDePasse }),
+        });
+        const donnees = await reponse.json();
+
+        if (!reponse.ok) {
+          message.classList.add("erreur");
+          message.textContent = donnees.detail || "Connexion impossible.";
+          return;
+        }
+
+        setToken(donnees.token);
+        window.location.href = "app.html";
+      } catch (erreur) {
+        message.classList.add("erreur");
+        message.textContent = "Serveur injoignable. Réessayez dans un instant.";
+      } finally {
+        bouton.disabled = false;
+        bouton.textContent = "Se connecter";
+      }
+    });
+  </script>
+</body>
+</html>

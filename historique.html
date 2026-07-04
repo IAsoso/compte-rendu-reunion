@@ -9,6 +9,9 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
   <script src="config.js"></script>
+  <script src="auth.js"></script>
+  <!-- Page protégée : sans jeton valide, on redirige vers la connexion. -->
+  <script>exigerAuth();</script>
 </head>
 <body class="page-app page-historique">
   <header>
@@ -22,6 +25,7 @@
     <nav class="nav-liens">
       <a href="index.html" class="lien-retour">Accueil</a>
       <a href="app.html" class="lien-retour">Nouvelle réunion →</a>
+      <a href="#" class="lien-retour" onclick="deconnexion(); return false;">Se déconnecter</a>
     </nav>
   </header>
 
@@ -52,6 +56,8 @@
 
   <script>
     const API = window.API_BASE_URL;
+    // Toutes les requêtes ci-dessous passent par fetchAuth (voir auth.js) :
+    // le jeton est joint automatiquement et un 401 déconnecte l'utilisateur.
     const liste = document.getElementById("liste");
     const sousTitre = document.getElementById("histoSousTitre");
     const etatVide = document.getElementById("etatVide");
@@ -72,7 +78,7 @@
     // Chargement de la liste
     async function chargerHistorique() {
       try {
-        const reponse = await fetch(API + "/historique");
+        const reponse = await fetchAuth(API + "/historique");
         const comptes = await reponse.json();
 
         if (!Array.isArray(comptes) || comptes.length === 0) {
@@ -108,7 +114,7 @@
     // Ouverture d'un compte-rendu : on le recharge puis on redirige vers resultat.html
     async function ouvrirCompteRendu(id) {
       try {
-        const reponse = await fetch(API + "/compte-rendu/" + id);
+        const reponse = await fetchAuth(API + "/compte-rendu/" + id);
         if (!reponse.ok) throw new Error("introuvable");
         const cr = await reponse.json();
 

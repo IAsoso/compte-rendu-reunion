@@ -1,10 +1,24 @@
 // ======================================================================
 //  Configuration du frontend Synthia
 // ----------------------------------------------------------------------
-//  UN SEUL endroit à changer pour pointer vers le backend.
+//  L'URL du backend est choisie AUTOMATIQUEMENT selon l'endroit où la page
+//  est ouverte : plus besoin de modifier ce fichier à chaque aller-retour
+//  entre développement local et production.
 //
-//  - En local (développement) : http://127.0.0.1:8000
-//  - En production (Render)    : remplacez par l'URL du Web Service backend,
-//    par exemple  https://synthia-api.onrender.com  (SANS slash final).
+//    - Ouvert depuis localhost / 127.0.0.1  ->  backend local
+//    - Ouvert par double-clic (fichier file://)  ->  backend local
+//    - Ouvert depuis n'importe quel autre domaine (Render)  ->  backend prod
+//
+//  Si un jour vous changez l'URL du backend de production, il n'y a qu'UNE
+//  seule ligne à ajuster : URL_PROD ci-dessous.
 // ======================================================================
-window.API_BASE_URL = "https://compte-rendu-reunionsynthia-api.onrender.com";
+const URL_LOCALE = "http://127.0.0.1:8000";
+const URL_PROD = "https://compte-rendu-reunionsynthia-api.onrender.com";
+
+// Développement local si servi depuis localhost/127.0.0.1, ou ouvert
+// directement depuis le disque (protocole file://, hostname vide).
+const hoteLocal =
+  ["127.0.0.1", "localhost"].includes(window.location.hostname) ||
+  window.location.protocol === "file:";
+
+window.API_BASE_URL = hoteLocal ? URL_LOCALE : URL_PROD;

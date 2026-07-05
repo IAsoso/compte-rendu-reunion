@@ -81,6 +81,15 @@
       return txt ? txt.charAt(0).toUpperCase() + txt.slice(1) : "Réunion";
     }
 
+    // Échappement HTML : type_reunion/format viennent de l'API et peuvent
+    // contenir n'importe quelle chaîne (le backend n'impose pas les valeurs
+    // du select) — sans échappement, un compte-rendu piégé serait un XSS stocké.
+    function echap(txt) {
+      const d = document.createElement("div");
+      d.textContent = txt == null ? "" : String(txt);
+      return d.innerHTML;
+    }
+
     const recherche = document.getElementById("recherche");
 
     // Jeton de séquence : seule la requête la plus récente met à jour l'affichage
@@ -117,8 +126,8 @@
           item.innerHTML = `
             <span class="histo-icone">📄</span>
             <span class="histo-infos">
-              <span class="histo-type">${capitaliser(cr.type_reunion)}</span>
-              <span class="histo-date">${formaterDate(cr.date_creation)}${cr.format ? "  ·  " + cr.format : ""}</span>
+              <span class="histo-type">${echap(capitaliser(cr.type_reunion))}</span>
+              <span class="histo-date">${echap(formaterDate(cr.date_creation))}${cr.format ? "  ·  " + echap(cr.format) : ""}</span>
             </span>
             <span class="histo-fleche" aria-hidden="true">→</span>
           `;

@@ -13,6 +13,7 @@
   <!-- Page protégée : sans jeton valide, on redirige vers la connexion. -->
   <script>exigerAuth();</script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
 </head>
 <body class="page-resultat">
@@ -160,9 +161,13 @@
     } else {
       elemContenu.classList.remove("cache");
 
-      // Compte-rendu : HTML édité s'il existe, sinon parse du Markdown
-      elemCompteRendu.innerHTML =
-        data.compte_rendu_html || marked.parse(data.compte_rendu || "");
+      // Compte-rendu : HTML édité s'il existe, sinon parse du Markdown.
+      // TOUJOURS assaini par DOMPurify : le contenu vient de l'IA (elle-même
+      // nourrie d'audio contrôlé par l'utilisateur) ou d'un HTML sauvegardé —
+      // sans nettoyage, un script injecté pourrait voler le jeton (XSS stocké).
+      elemCompteRendu.innerHTML = DOMPurify.sanitize(
+        data.compte_rendu_html || marked.parse(data.compte_rendu || "")
+      );
 
       // Transcription
       elemTranscription.textContent = data.texte || "";
@@ -406,7 +411,8 @@
         const resultat = await reponse.json();
 
         // On remplace le compte-rendu affiché par la version modifiée
-        elemCompteRendu.innerHTML = marked.parse(resultat.compte_rendu || "");
+        // (assainie : la réponse de l'IA n'est jamais insérée telle quelle)
+        elemCompteRendu.innerHTML = DOMPurify.sanitize(marked.parse(resultat.compte_rendu || ""));
 
         // On bascule sur l'onglet Compte-rendu pour montrer le changement
         document.querySelector('.onglet[data-panneau="panCR"]').click();

@@ -5,6 +5,7 @@ import tempfile
 import os
 import uuid
 import threading
+import time
 import sqlite3
 from datetime import datetime, timedelta, timezone
 from passlib.context import CryptContext
@@ -12,6 +13,7 @@ import jwt
 from pydub import AudioSegment
 import imageio_ffmpeg
 from google import genai
+from google.genai import errors as genai_errors
 
 # FFmpeg n'est pas installé sur le système (ni en local Windows, ni sur Render).
 # On pointe pydub vers le binaire FFmpeg embarqué par le paquet imageio-ffmpeg.
@@ -32,6 +34,47 @@ client_gemini = genai.Client(api_key=cle_gemini)
 cle_groq = os.getenv("GROQ_API_KEY")
 client_groq = Groq(api_key=cle_groq)
 MODELE_TRANSCRIPTION = "whisper-large-v3-turbo"
+
+
+# ======================================================================
+#  APPELS GEMINI — respect du quota (10 req/min) + retry sur 429
+# ----------------------------------------------------------------------
+#  Le pipeline enchaîne plusieurs appels Gemini rapprochés (nettoyage,
+#  résumé, actions, map-reduce). On les espace pour rester sous la limite,
+#  et on réessaie automatiquement en cas d'erreur 429.
+# ======================================================================
+INTERVALLE_MIN_GEMINI_S = 6.5   # >= 6 s => au plus ~9-10 appels par minute
+GEMINI_MAX_ESSAIS = 3           # nombre total de tentatives par appel
+
+_gemini_verrou = threading.Lock()   # sérialise l'espacement (jobs concurrents)
+_gemini_dernier_appel = [0.0]       # horodatage (monotonic) du dernier appel
+
+
+def appeler_gemini(**kwargs):
+    """Appelle Gemini en garantissant un intervalle minimum entre deux appels
+    et en réessayant sur erreur 429 (backoff). Lève RuntimeError avec un
+    message clair si la limite persiste après GEMINI_MAX_ESSAIS tentatives."""
+    for essai in range(1, GEMINI_MAX_ESSAIS + 1):
+        # Pause pour respecter l'intervalle minimum depuis le dernier appel.
+        with _gemini_verrou:
+            attente = INTERVALLE_MIN_GEMINI_S - (time.monotonic() - _gemini_dernier_appel[0])
+            if attente > 0:
+                time.sleep(attente)
+            _gemini_dernier_appel[0] = time.monotonic()
+
+        try:
+            return client_gemini.models.generate_content(**kwargs)
+        except genai_errors.ClientError as erreur:
+            est_429 = getattr(erreur, "code", None) == 429
+            if est_429 and essai < GEMINI_MAX_ESSAIS:
+                time.sleep(INTERVALLE_MIN_GEMINI_S * essai)  # backoff croissant
+                continue
+            if est_429:
+                raise RuntimeError(
+                    "Limite de requêtes de l'IA atteinte (quota Gemini : 10/min). "
+                    "Réessayez dans une minute."
+                )
+            raise
 
 # ======================================================================
 #  AUTHENTIFICATION (comptes email / mot de passe)
@@ -276,7 +319,7 @@ RÈGLES STRICTES :
 Transcription brute :
 {texte_brut}
 """
-    reponse = client_gemini.models.generate_content(
+    reponse = appeler_gemini(
         model="gemini-2.5-flash",
         contents=prompt
     )
@@ -307,7 +350,7 @@ Si une section n'a pas d'information, indique "Aucune information". N'utilise pa
 Transcription :
 {texte_transcription}
 """
-    reponse = client_gemini.models.generate_content(
+    reponse = appeler_gemini(
         model="gemini-2.5-flash",
         contents=prompt
     )
@@ -328,7 +371,7 @@ N'invente aucune action qui n'est pas dans le texte.
 Transcription :
 {texte_propre}
 """
-    reponse = client_gemini.models.generate_content(
+    reponse = appeler_gemini(
         model="gemini-2.5-flash",
         contents=prompt,
         config={"response_mime_type": "application/json"}
@@ -402,7 +445,7 @@ final, ne fais pas d'introduction : uniquement des notes fidèles à cet extrait
 Extrait :
 {texte_morceau}
 """
-    reponse = client_gemini.models.generate_content(
+    reponse = appeler_gemini(
         model="gemini-2.5-flash",
         contents=prompt
     )
@@ -438,7 +481,7 @@ Si une section n'a pas d'information, indique "Aucune information". N'utilise pa
 Notes des différentes parties :
 {corpus}
 """
-    reponse = client_gemini.models.generate_content(
+    reponse = appeler_gemini(
         model="gemini-2.5-flash",
         contents=prompt
     )
@@ -635,7 +678,7 @@ Modification demandée : {instruction}
 Compte-rendu actuel :
 {compte_rendu}
 """
-    reponse = client_gemini.models.generate_content(
+    reponse = appeler_gemini(
         model="gemini-2.5-flash",
         contents=prompt
     )

@@ -327,15 +327,23 @@ def enregistrer_compte_rendu(user_id, type_reunion, format_souhaite, transcripti
     return nouvel_id
 
 
-def lister_comptes_rendus(user_id):
-    """Renvoie l'essentiel des comptes-rendus DE CET UTILISATEUR, du + récent au + ancien."""
+def lister_comptes_rendus(user_id, recherche=None):
+    """Renvoie l'essentiel des comptes-rendus DE CET UTILISATEUR, du + récent au
+    + ancien. Si `recherche` est fourni, filtre sur le type, la date, le
+    compte-rendu et la transcription (sans jamais sortir des CR de l'utilisateur)."""
     conn = sqlite3.connect(CHEMIN_DB)
     conn.row_factory = sqlite3.Row  # accès par nom de colonne
-    lignes = conn.execute(
-        "SELECT id, date_creation, type_reunion, format FROM comptes_rendus "
-        "WHERE user_id = ? ORDER BY id DESC",
-        (user_id,),
-    ).fetchall()
+    sql = "SELECT id, date_creation, type_reunion, format FROM comptes_rendus WHERE user_id = ?"
+    params = [user_id]
+    if recherche:
+        motif = f"%{recherche}%"
+        sql += (
+            " AND (type_reunion LIKE ? OR date_creation LIKE ? "
+            "OR compte_rendu LIKE ? OR transcription LIKE ?)"
+        )
+        params += [motif, motif, motif, motif]
+    sql += " ORDER BY id DESC"
+    lignes = conn.execute(sql, params).fetchall()
     conn.close()
     return [dict(ligne) for ligne in lignes]
 
@@ -920,9 +928,10 @@ def progression(job_id: str, user_id: int = Depends(utilisateur_courant)):
 # ======================================================================
 
 @app.get("/historique")
-def historique(user_id: int = Depends(utilisateur_courant)):
-    """Liste les comptes-rendus de l'utilisateur connecté (id, date, type, format)."""
-    return lister_comptes_rendus(user_id)
+def historique(q: str = "", user_id: int = Depends(utilisateur_courant)):
+    """Liste les comptes-rendus de l'utilisateur connecté (id, date, type, format).
+    Paramètre optionnel `q` : filtre par mot-clé (type, date, contenu)."""
+    return lister_comptes_rendus(user_id, q.strip() or None)
 
 
 @app.get("/compte-rendu/{cr_id}")

@@ -976,6 +976,20 @@ html.js .reveal.visible { opacity: 1; transform: none; }
 
 .bloc-google { display: flex; justify-content: center; }
 
+/* Barre de recherche de l'historique */
+.histo-recherche {
+  width: 100%; box-sizing: border-box;
+  font: inherit; font-size: 0.98rem; color: var(--ink);
+  padding: 12px 16px; margin-bottom: 18px;
+  border: 1px solid var(--line-2); border-radius: var(--r-s);
+  background: #fff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.histo-recherche:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
 .auth-bascule {
   margin-top: 24px; padding-top: 20px;
   border-top: 1px solid var(--line);

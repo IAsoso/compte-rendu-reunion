@@ -8,8 +8,11 @@ import threading
 import time
 import sqlite3
 from datetime import datetime, timedelta, timezone
+import secrets
 from passlib.context import CryptContext
 import jwt
+from google.oauth2 import id_token as google_id_token
+from google.auth.transport import requests as google_requests
 from pydub import AudioSegment
 import imageio_ffmpeg
 from google import genai
@@ -95,6 +98,9 @@ if not JWT_SECRET_KEY:
     )
 JWT_ALGORITHME = "HS256"
 JWT_DUREE_JOURS = 7  # durée de validité d'un jeton avant reconnexion
+
+# Client ID OAuth Google (public, pas un secret). Requis pour la connexion Google.
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 
 
 def hacher_mot_de_passe(mot_de_passe: str) -> str:
@@ -240,6 +246,18 @@ def get_utilisateur_par_email(email):
     ).fetchone()
     conn.close()
     return dict(ligne) if ligne else None
+
+
+def get_ou_creer_utilisateur_google(email):
+    """Renvoie l'id de l'utilisateur pour cet email (déjà prouvé par Google) :
+    connecte au compte existant, ou en crée un nouveau. Le compte créé reçoit un
+    hash bcrypt d'un secret aléatoire : la connexion par mot de passe est donc
+    impossible tant qu'aucun mot de passe n'a été choisi."""
+    utilisateur = get_utilisateur_par_email(email)
+    if utilisateur is not None:
+        return utilisateur["id"]
+    hash_inutilisable = hacher_mot_de_passe(secrets.token_urlsafe(32))
+    return creer_utilisateur(email, hash_inutilisable)
 
 
 def enregistrer_compte_rendu(user_id, type_reunion, format_souhaite, transcription, compte_rendu, actions):
@@ -662,6 +680,35 @@ def connexion(identifiants: IdentifiantsAuth):
         raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect.")
 
     return {"token": creer_token(utilisateur["id"]), "email": email}
+
+
+class IdentifiantsGoogle(BaseModel):
+    credential: str          # jeton d'identité (ID token) fourni par Google
+
+
+@app.post("/auth/google")
+def connexion_google(donnees: IdentifiantsGoogle):
+    """Connexion via Google : vérifie le jeton d'identité côté serveur, crée le
+    compte si besoin, et renvoie le MÊME type de JWT que l'auth email/mdp."""
+    if not GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="Connexion Google non configurée.")
+
+    try:
+        # Vérifie signature, expiration ET audience (= notre Client ID) ;
+        # l'émetteur (accounts.google.com) est contrôlé par la bibliothèque.
+        infos = google_id_token.verify_oauth2_token(
+            donnees.credential, google_requests.Request(), GOOGLE_CLIENT_ID
+        )
+    except ValueError:
+        raise HTTPException(status_code=401, detail="Jeton Google invalide.")
+
+    # On n'accepte que des emails vérifiés par Google.
+    if not infos.get("email_verified") or not infos.get("email"):
+        raise HTTPException(status_code=401, detail="Email Google non vérifié.")
+
+    email = infos["email"].lower().strip()
+    user_id = get_ou_creer_utilisateur_google(email)
+    return {"token": creer_token(user_id), "email": email}
 
 
 # --- Modification du compte-rendu par IA (chat en langage naturel) ---

@@ -12,6 +12,8 @@
   <script src="auth.js"></script>
   <!-- Déjà connecté ? On va directement à l'app. -->
   <script>if (getToken()) window.location.href = "app.html";</script>
+  <!-- Google Identity Services : initialise le bouton une fois la lib chargée. -->
+  <script src="https://accounts.google.com/gsi/client" async onload="initialiserBoutonGoogle()"></script>
 </head>
 <body class="page-auth">
   <header>
@@ -43,6 +45,9 @@
 
       <button type="submit" class="cta btn-auth" id="btnInscription">Créer mon compte</button>
       <p class="auth-message" id="message"></p>
+
+      <div class="auth-separateur">ou</div>
+      <div class="bloc-google"><div id="btnGoogle"></div></div>
 
       <p class="auth-bascule">
         Vous avez déjà un compte ? <a href="connexion.html">Se connecter</a>

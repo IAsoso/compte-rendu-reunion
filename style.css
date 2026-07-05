@@ -960,6 +960,16 @@ html.js .reveal.visible { opacity: 1; transform: none; }
 .auth-message.erreur { color: var(--danger); }
 .auth-message.succes { color: var(--accent); }
 
+.auth-separateur {
+  display: flex; align-items: center; gap: 14px;
+  margin: 22px 0; color: var(--ink-3); font-size: 0.82rem;
+}
+.auth-separateur::before, .auth-separateur::after {
+  content: ""; flex: 1; height: 1px; background: var(--line);
+}
+
+.bloc-google { display: flex; justify-content: center; }
+
 .auth-bascule {
   margin-top: 24px; padding-top: 20px;
   border-top: 1px solid var(--line);

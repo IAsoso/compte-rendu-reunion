@@ -20,6 +20,7 @@ passlib==1.7.4               # gestion du hachage des mots de passe
 bcrypt==4.0.1                # algorithme de hachage (épinglé : évite un warning passlib avec bcrypt >= 4.1)
 PyJWT==2.10.1                # jetons JWT signés (connexion sans session serveur)
 email-validator==2.2.0       # validation du format email (via Pydantic EmailStr)
+google-auth==2.55.1          # vérification des jetons d'identité Google (OAuth)
 
 # --- Audio ---
 pydub==0.25.1                # découpage des longues réunions

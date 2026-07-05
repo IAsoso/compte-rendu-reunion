@@ -22,3 +22,7 @@ const hoteLocal =
   window.location.protocol === "file:";
 
 window.API_BASE_URL = hoteLocal ? URL_LOCALE : URL_PROD;
+
+// Client ID OAuth Google (public, pas un secret) — pour le bouton « Se
+// connecter avec Google ». Doit correspondre au GOOGLE_CLIENT_ID du backend.
+window.GOOGLE_CLIENT_ID = "896098783552-0d1l3r5htlps8qift4enph9uociif381.apps.googleusercontent.com";

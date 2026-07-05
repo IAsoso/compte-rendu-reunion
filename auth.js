@@ -54,3 +54,47 @@ async function fetchAuth(url, options = {}) {
   }
   return reponse;
 }
+
+// ----------------------------------------------------------------------
+//  Connexion Google (Google Identity Services)
+// ----------------------------------------------------------------------
+// Callback appelé par Google avec le jeton d'identité. On l'envoie au backend
+// qui le vérifie et renvoie NOTRE JWT (même flux que l'auth email/mdp).
+async function gererReponseGoogle(reponse) {
+  const message = document.getElementById("message");
+  try {
+    const r = await fetch(window.API_BASE_URL + "/auth/google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ credential: reponse.credential }),
+    });
+    const donnees = await r.json();
+    if (!r.ok) throw new Error(donnees.detail || "Connexion Google impossible.");
+    setToken(donnees.token);
+    window.location.href = "app.html";
+  } catch (erreur) {
+    if (message) {
+      message.className = "auth-message erreur";
+      message.textContent = erreur.message || "Serveur injoignable.";
+    }
+  }
+}
+
+// Initialise et affiche le bouton Google (appelé au chargement de la lib GSI).
+function initialiserBoutonGoogle() {
+  if (!window.google || !window.GOOGLE_CLIENT_ID) return;
+  google.accounts.id.initialize({
+    client_id: window.GOOGLE_CLIENT_ID,
+    callback: gererReponseGoogle,
+  });
+  const cible = document.getElementById("btnGoogle");
+  if (cible) {
+    google.accounts.id.renderButton(cible, {
+      theme: "outline",
+      size: "large",
+      text: "continue_with",
+      width: 352,
+      locale: "fr",
+    });
+  }
+}

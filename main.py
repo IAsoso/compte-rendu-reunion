@@ -213,6 +213,48 @@ def init_db():
             "ADD COLUMN user_id INTEGER REFERENCES utilisateurs(id)"
         )
 
+    # Migration : préférences par défaut sur utilisateurs (NULL = valeurs par
+    # défaut appliquées à la lecture). Idempotent.
+    cols_users = {ligne[1] for ligne in conn.execute("PRAGMA table_info(utilisateurs)")}
+    if "type_reunion_defaut" not in cols_users:
+        conn.execute("ALTER TABLE utilisateurs ADD COLUMN type_reunion_defaut TEXT")
+    if "format_defaut" not in cols_users:
+        conn.execute("ALTER TABLE utilisateurs ADD COLUMN format_defaut TEXT")
+
+    conn.commit()
+    conn.close()
+
+
+# Préférences : options autorisées (mêmes valeurs que les select de app.html)
+TYPES_REUNION = {
+    "réunion d'équipe", "réunion client", "réunion de projet",
+    "point rapide", "réunion générale",
+}
+FORMATS = {"concis", "détaillé"}
+TYPE_REUNION_DEFAUT = "réunion générale"
+FORMAT_DEFAUT = "concis"
+
+
+def get_preferences(user_id):
+    """Renvoie les préférences de l'utilisateur, valeurs par défaut si non définies."""
+    conn = sqlite3.connect(CHEMIN_DB)
+    ligne = conn.execute(
+        "SELECT type_reunion_defaut, format_defaut FROM utilisateurs WHERE id = ?",
+        (user_id,),
+    ).fetchone()
+    conn.close()
+    type_reunion = (ligne[0] if ligne else None) or TYPE_REUNION_DEFAUT
+    format_defaut = (ligne[1] if ligne else None) or FORMAT_DEFAUT
+    return {"type_reunion": type_reunion, "format": format_defaut}
+
+
+def maj_preferences(user_id, type_reunion, format_souhaite):
+    """Enregistre les préférences de l'utilisateur."""
+    conn = sqlite3.connect(CHEMIN_DB)
+    conn.execute(
+        "UPDATE utilisateurs SET type_reunion_defaut = ?, format_defaut = ? WHERE id = ?",
+        (type_reunion, format_souhaite, user_id),
+    )
     conn.commit()
     conn.close()
 
@@ -709,6 +751,30 @@ def connexion_google(donnees: IdentifiantsGoogle):
     email = infos["email"].lower().strip()
     user_id = get_ou_creer_utilisateur_google(email)
     return {"token": creer_token(user_id), "email": email}
+
+
+# ======================================================================
+#  PRÉFÉRENCES UTILISATEUR (valeurs par défaut des comptes-rendus)
+# ======================================================================
+class Preferences(BaseModel):
+    type_reunion: str
+    format: str
+
+
+@app.get("/preferences")
+def lire_preferences(user_id: int = Depends(utilisateur_courant)):
+    return get_preferences(user_id)
+
+
+@app.put("/preferences")
+def ecrire_preferences(prefs: Preferences, user_id: int = Depends(utilisateur_courant)):
+    # On valide contre les options connues pour ne pas stocker n'importe quoi.
+    if prefs.type_reunion not in TYPES_REUNION:
+        raise HTTPException(status_code=400, detail="Type de réunion invalide.")
+    if prefs.format not in FORMATS:
+        raise HTTPException(status_code=400, detail="Format invalide.")
+    maj_preferences(user_id, prefs.type_reunion, prefs.format)
+    return get_preferences(user_id)
 
 
 # --- Modification du compte-rendu par IA (chat en langage naturel) ---

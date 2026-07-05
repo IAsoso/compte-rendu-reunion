@@ -24,6 +24,7 @@
     </a>
     <nav class="nav-liens">
       <a href="historique.html" class="lien-retour">Historique</a>
+      <a href="parametres.html" class="lien-retour">Paramètres</a>
       <a href="index.html" class="lien-retour">← Accueil</a>
       <a href="#" class="lien-retour" onclick="deconnexion(); return false;">Se déconnecter</a>
     </nav>
@@ -95,6 +96,18 @@
   </div>
 
   <script>
+    // ---- Pré-remplissage des réglages avec les préférences de l'utilisateur ----
+    (async () => {
+      try {
+        const reponse = await fetchAuth(API_BASE_URL + "/preferences");
+        const prefs = await reponse.json();
+        document.getElementById("typeReunion").value = prefs.type_reunion;
+        document.getElementById("format").value = prefs.format;
+      } catch (erreur) {
+        // Échec silencieux : on garde simplement les valeurs par défaut des select.
+      }
+    })();
+
     // ---- Éléments ----
     const btnMicro = document.getElementById("btnMicro");
     const etatLabel = document.getElementById("etatLabel");

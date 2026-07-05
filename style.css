@@ -942,7 +942,13 @@ html.js .reveal.visible { opacity: 1; transform: none; }
   border: 1px solid var(--line-2); background: #fff;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
-.champ input:focus {
+.champ select {
+  font: inherit; font-size: 0.98rem; color: var(--ink);
+  padding: 12px 14px; border-radius: var(--r-s);
+  border: 1px solid var(--line-2); background: #fff; cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.champ input:focus, .champ select:focus {
   outline: none; border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
 }

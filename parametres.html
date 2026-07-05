@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Synthia — Paramètres</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
+  <script src="auth.js"></script>
+  <!-- Page protégée : sans jeton valide, on redirige vers la connexion. -->
+  <script>exigerAuth();</script>
+</head>
+<body class="page-auth">
+  <header>
+    <a href="index.html" class="logo-lien">
+      <div class="logo">S</div>
+      <div>
+        <h1>Synthia</h1>
+        <div class="tagline">Vos réunions, résumées par l'IA</div>
+      </div>
+    </a>
+    <nav class="nav-liens">
+      <a href="app.html" class="lien-retour">Nouvelle réunion</a>
+      <a href="historique.html" class="lien-retour">Historique</a>
+      <a href="#" class="lien-retour" onclick="deconnexion(); return false;">Se déconnecter</a>
+    </nav>
+  </header>
+
+  <main>
+    <form class="carte-auth rise" id="formParametres" novalidate>
+      <h2 class="auth-titre">Paramètres</h2>
+      <p class="auth-sous-titre">Vos préférences par défaut pour chaque nouveau compte-rendu.</p>
+
+      <div class="champ">
+        <label for="typeReunion">Type de réunion par défaut</label>
+        <select id="typeReunion">
+          <option value="réunion d'équipe">Réunion d'équipe</option>
+          <option value="réunion client">Réunion client</option>
+          <option value="réunion de projet">Réunion de projet</option>
+          <option value="point rapide">Point rapide</option>
+          <option value="réunion générale">Autre / Générale</option>
+        </select>
+      </div>
+      <div class="champ">
+        <label for="format">Format par défaut</label>
+        <select id="format">
+          <option value="concis">Concis (l'essentiel)</option>
+          <option value="détaillé">Détaillé (complet)</option>
+        </select>
+      </div>
+
+      <button type="submit" class="cta btn-auth" id="btnEnregistrer">Enregistrer</button>
+      <p class="auth-message" id="message"></p>
+    </form>
+  </main>
+
+  <script>
+    const form = document.getElementById("formParametres");
+    const bouton = document.getElementById("btnEnregistrer");
+    const message = document.getElementById("message");
+    const selType = document.getElementById("typeReunion");
+    const selFormat = document.getElementById("format");
+
+    // Chargement des préférences actuelles.
+    (async () => {
+      try {
+        const reponse = await fetchAuth(API_BASE_URL + "/preferences");
+        const prefs = await reponse.json();
+        selType.value = prefs.type_reunion;
+        selFormat.value = prefs.format;
+      } catch (erreur) {
+        message.className = "auth-message erreur";
+        message.textContent = "Impossible de charger vos préférences.";
+      }
+    })();
+
+    // Enregistrement.
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      message.className = "auth-message";
+      message.textContent = "";
+      bouton.disabled = true;
+      bouton.textContent = "Enregistrement…";
+      try {
+        const reponse = await fetchAuth(API_BASE_URL + "/preferences", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type_reunion: selType.value, format: selFormat.value }),
+        });
+        if (!reponse.ok) throw new Error("Échec de l'enregistrement.");
+        message.className = "auth-message succes";
+        message.textContent = "✅ Préférences enregistrées.";
+      } catch (erreur) {
+        message.className = "auth-message erreur";
+        message.textContent = erreur.message || "Serveur injoignable.";
+      } finally {
+        bouton.disabled = false;
+        bouton.textContent = "Enregistrer";
+      }
+    });
+  </script>
+</body>
+</html>

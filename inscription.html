@@ -43,6 +43,12 @@
         <input type="password" id="motDePasse" autocomplete="new-password" placeholder="Au moins 8 caractères" required>
       </div>
 
+      <label class="champ-cgu">
+        <input type="checkbox" id="accepteCgu">
+        <span>J'accepte les <a href="cgu.html" target="_blank">CGU</a> et la
+          <a href="confidentialite.html" target="_blank">politique de confidentialité</a>.</span>
+      </label>
+
       <button type="submit" class="cta btn-auth" id="btnInscription">Créer mon compte</button>
       <p class="auth-message" id="message"></p>
 
@@ -67,11 +73,17 @@
 
       const email = document.getElementById("email").value.trim();
       const motDePasse = document.getElementById("motDePasse").value;
+      const cguAcceptees = document.getElementById("accepteCgu").checked;
 
-      // Contrôle côté client (le backend revérifie de toute façon).
+      // Contrôles côté client (le backend revérifie de toute façon).
       if (motDePasse.length < 8) {
         message.classList.add("erreur");
         message.textContent = "Le mot de passe doit contenir au moins 8 caractères.";
+        return;
+      }
+      if (!cguAcceptees) {
+        message.classList.add("erreur");
+        message.textContent = "Veuillez accepter les CGU et la politique de confidentialité.";
         return;
       }
 
@@ -81,7 +93,7 @@
         const reponse = await fetch(API_BASE_URL + "/inscription", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: email, mot_de_passe: motDePasse }),
+          body: JSON.stringify({ email: email, mot_de_passe: motDePasse, cgu_acceptees: cguAcceptees }),
         });
         const donnees = await reponse.json();
 
@@ -105,5 +117,13 @@
       }
     });
   </script>
+  <footer class="pied">
+    <p>Synthia — Comptes-rendus de réunion par IA</p>
+    <p class="pied-liens">
+      <a href="mentions-legales.html">Mentions légales</a> ·
+      <a href="cgu.html">CGU</a> ·
+      <a href="confidentialite.html">Confidentialité</a>
+    </p>
+  </footer>
 </body>
 </html>

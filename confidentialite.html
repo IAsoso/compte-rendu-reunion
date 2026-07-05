@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Synthia — Politique de confidentialité</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <a href="index.html" class="logo-lien">
+      <div class="logo">S</div>
+      <div>
+        <h1>Synthia</h1>
+        <div class="tagline">Vos réunions, résumées par l'IA</div>
+      </div>
+    </a>
+    <nav class="nav-liens">
+      <a href="index.html" class="lien-retour">← Accueil</a>
+    </nav>
+  </header>
+
+  <main class="conteneur legal-main">
+    <article class="carte-auth carte-legal rise">
+      <h1>Politique de confidentialité</h1>
+      <p class="legal-maj">Dernière mise à jour : 6 juillet 2026</p>
+
+      <p>
+        La présente politique explique quelles données personnelles Synthia collecte, pourquoi,
+        avec qui elles sont partagées, et quels sont vos droits. Le responsable du traitement est
+        Sofiane Patureau (voir <a href="mentions-legales.html">Mentions légales</a>), joignable à
+        <a href="mailto:sofianepatureau@gmail.com">sofianepatureau@gmail.com</a>.
+      </p>
+
+      <h2>1. Données que nous collectons</h2>
+      <p>Dans sa version actuelle, l'application traite uniquement&nbsp;:</p>
+      <ul>
+        <li><strong>Email</strong>&nbsp;: pour créer et identifier votre compte.</li>
+        <li><strong>Mot de passe</strong>&nbsp;: stocké uniquement sous forme de <em>hachage
+          bcrypt</em> (jamais en clair). Si vous vous connectez avec Google, aucun mot de passe
+          n'est stocké.</li>
+        <li><strong>Enregistrements audio</strong>&nbsp;: l'audio de vos réunions est envoyé au
+          serveur pour être transcrit. Il est utilisé le temps du traitement puis supprimé du
+          serveur&nbsp;; il n'est pas conservé après génération du compte-rendu.</li>
+        <li><strong>Transcriptions, comptes-rendus et actions</strong>&nbsp;: générés à partir de
+          votre audio et conservés dans votre historique pour que vous puissiez les consulter.</li>
+        <li><strong>Préférences</strong>&nbsp;: type de réunion et format par défaut.</li>
+        <li><strong>Données de facturation</strong>&nbsp;: gérées directement par Stripe. Synthia
+          ne stocke pas votre numéro de carte&nbsp;; nous conservons uniquement un identifiant
+          client Stripe et l'état de votre abonnement (offre, statut).</li>
+      </ul>
+
+      <h2>2. Finalités et base légale</h2>
+      <ul>
+        <li>Fournir le service (transcription, compte-rendu, historique)&nbsp;: exécution du
+          contrat.</li>
+        <li>Gérer les comptes et l'authentification&nbsp;: exécution du contrat.</li>
+        <li>Gérer les abonnements et paiements&nbsp;: exécution du contrat et obligations
+          légales.</li>
+        <li>Faire respecter les quotas et sécuriser le service&nbsp;: intérêt légitime.</li>
+      </ul>
+
+      <h2>3. Sous-traitants et destinataires</h2>
+      <p>
+        Pour fonctionner, Synthia fait appel à des prestataires techniques qui traitent certaines
+        données pour notre compte&nbsp;:
+      </p>
+      <ul>
+        <li><strong>Groq</strong>&nbsp;: transcription de l'audio en texte (l'audio leur est
+          transmis pour ce traitement).</li>
+        <li><strong>Google Gemini</strong>&nbsp;: génération du compte-rendu, du nettoyage de la
+          transcription et des actions (le texte de la transcription leur est transmis).</li>
+        <li><strong>Stripe</strong>&nbsp;: traitement des paiements et gestion des abonnements.</li>
+        <li><strong>Render Services, Inc.</strong>&nbsp;: hébergement de l'application et de la
+          base de données.</li>
+      </ul>
+      <p>
+        Certains de ces prestataires peuvent traiter des données en dehors de l'Union européenne.
+        Nous ne vendons pas vos données et ne les partageons pas à des fins publicitaires.
+      </p>
+
+      <h2>4. Durée de conservation</h2>
+      <p>
+        Vos comptes-rendus et données de compte sont conservés tant que votre compte est actif.
+        L'audio brut n'est pas conservé au-delà du traitement. Vous pouvez demander la suppression
+        de vos données à tout moment (voir ci-dessous).
+      </p>
+
+      <h2>5. Vos droits (RGPD)</h2>
+      <p>Conformément au Règlement général sur la protection des données, vous disposez des droits
+        d'<strong>accès</strong>, de <strong>rectification</strong>, de <strong>suppression</strong>,
+        de <strong>portabilité</strong> de vos données, ainsi que du droit de vous opposer ou de
+        limiter certains traitements.</p>
+      <p class="legal-important">
+        L'application ne propose pas encore de fonctionnalité de suppression de compte en libre-service.
+        En attendant, pour exercer l'un de ces droits — y compris la suppression de votre compte et
+        de vos données — écrivez-nous à
+        <a href="mailto:sofianepatureau@gmail.com">sofianepatureau@gmail.com</a>. Nous traiterons
+        votre demande dans les meilleurs délais.
+      </p>
+      <p>
+        Vous avez également le droit d'introduire une réclamation auprès de la CNIL
+        (<a href="https://www.cnil.fr" target="_blank" rel="noopener">cnil.fr</a>).
+      </p>
+
+      <h2>6. Sécurité</h2>
+      <p>
+        Les mots de passe sont hachés (bcrypt), les échanges se font via HTTPS, et l'accès à vos
+        comptes-rendus est strictement isolé par utilisateur. Aucun système n'étant infaillible,
+        nous ne pouvons garantir une sécurité absolue, mais nous mettons en œuvre des mesures
+        raisonnables pour protéger vos données.
+      </p>
+
+      <h2>7. Contact</h2>
+      <p>
+        Pour toute question relative à vos données&nbsp;:
+        <a href="mailto:sofianepatureau@gmail.com">sofianepatureau@gmail.com</a>.
+      </p>
+    </article>
+  </main>
+
+  <footer class="pied">
+    <p>Synthia — Comptes-rendus de réunion par IA</p>
+    <p class="pied-liens">
+      <a href="mentions-legales.html">Mentions légales</a> ·
+      <a href="cgu.html">CGU</a> ·
+      <a href="confidentialite.html">Confidentialité</a>
+    </p>
+  </footer>
+</body>
+</html>

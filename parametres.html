@@ -73,6 +73,17 @@
       <button type="submit" class="cta btn-auth" id="btnEnregistrer">Enregistrer</button>
       <p class="auth-message" id="message"></p>
     </form>
+
+    <!-- Zone dangereuse : suppression definitive du compte (RGPD) -->
+    <div class="carte-auth carte-danger rise" style="margin-top: 22px;">
+      <h2 class="auth-titre">Supprimer mon compte</h2>
+      <p class="auth-sous-titre">
+        Suppression définitive et immédiate : tous vos comptes-rendus et données seront
+        effacés, et tout abonnement en cours sera résilié. Cette action est irréversible.
+      </p>
+      <button type="button" class="btn-danger" id="btnSupprimerCompte">Supprimer définitivement mon compte</button>
+      <p class="auth-message" id="messageSuppression"></p>
+    </div>
   </main>
 
   <script>
@@ -150,6 +161,37 @@
         message.textContent = "Impossible de charger vos préférences.";
       }
     })();
+
+    // ---- Suppression de compte (double confirmation) ----
+    const btnSupprimer = document.getElementById("btnSupprimerCompte");
+    const messageSuppression = document.getElementById("messageSuppression");
+    btnSupprimer.addEventListener("click", async () => {
+      const saisie = prompt(
+        "Cette action est IRRÉVERSIBLE : comptes-rendus effacés, abonnement résilié.\n\n" +
+        "Pour confirmer, tapez : SUPPRIMER"
+      );
+      if (saisie === null) return;                 // annulé
+      if (saisie.trim().toUpperCase() !== "SUPPRIMER") {
+        messageSuppression.className = "auth-message erreur";
+        messageSuppression.textContent = "Confirmation incorrecte — compte conservé.";
+        return;
+      }
+      btnSupprimer.disabled = true;
+      btnSupprimer.textContent = "Suppression…";
+      try {
+        const r = await fetchAuth(API_BASE_URL + "/compte", { method: "DELETE" });
+        const d = await r.json();
+        if (!r.ok) throw new Error(d.detail || "Échec de la suppression.");
+        localStorage.removeItem("synthia_token");
+        sessionStorage.clear();
+        window.location.href = "index.html";
+      } catch (erreur) {
+        messageSuppression.className = "auth-message erreur";
+        messageSuppression.textContent = erreur.message || "Serveur injoignable.";
+        btnSupprimer.disabled = false;
+        btnSupprimer.textContent = "Supprimer définitivement mon compte";
+      }
+    });
 
     // Enregistrement.
     form.addEventListener("submit", async (e) => {

@@ -1025,6 +1025,18 @@ html.js .reveal.visible { opacity: 1; transform: none; }
   color: var(--ink) !important;
 }
 
+/* Zone dangereuse (suppression de compte) */
+.carte-danger { border-color: rgba(255, 59, 48, 0.35); }
+.btn-danger {
+  font: inherit; font-weight: 600; font-size: 0.95rem;
+  color: var(--danger); background: #fff;
+  border: 1px solid rgba(255, 59, 48, 0.45);
+  padding: 11px 20px; border-radius: var(--r-s); cursor: pointer;
+  transition: background 0.2s, color 0.2s, box-shadow 0.2s;
+}
+.btn-danger:hover { background: var(--danger); color: #fff; box-shadow: 0 8px 24px rgba(255, 59, 48, 0.3); }
+.btn-danger:disabled { opacity: 0.6; cursor: default; }
+
 /* Case à cocher d'acceptation des CGU (inscription) */
 .champ-cgu {
   display: flex; align-items: flex-start; gap: 10px;

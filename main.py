@@ -1079,6 +1079,45 @@ def connexion_google(donnees: IdentifiantsGoogle):
 
 
 # ======================================================================
+#  SUPPRESSION DE COMPTE (droit à l'oubli RGPD)
+# ======================================================================
+@app.delete("/compte")
+def supprimer_compte(user_id: int = Depends(utilisateur_courant)):
+    """Supprime le compte de l'utilisateur connecté et TOUTES ses données :
+    comptes-rendus, usage, préférences, puis la ligne utilisateur. Si un
+    client Stripe existe, il est supprimé chez Stripe (ce qui résilie
+    immédiatement tout abonnement en cours)."""
+    _, stripe_customer_id = get_infos_facturation(user_id)
+
+    # 1. Stripe d'abord : on ne veut pas laisser un abonnement facturable
+    #    orphelin. Si Stripe est injoignable, on refuse la suppression
+    #    plutôt que de laisser l'utilisateur payer pour un compte disparu.
+    if stripe_customer_id and stripe.api_key:
+        try:
+            stripe.Customer.delete(stripe_customer_id)
+        except stripe.error.InvalidRequestError:
+            pass  # client déjà supprimé/inexistant chez Stripe : on continue
+        except Exception:
+            raise HTTPException(
+                status_code=502,
+                detail=(
+                    "Impossible de résilier l'abonnement auprès de Stripe pour "
+                    "le moment. Réessayez dans quelques minutes."
+                ),
+            )
+
+    # 2. Données locales : tout ce qui est rattaché à l'utilisateur.
+    conn = sqlite3.connect(CHEMIN_DB)
+    conn.execute("DELETE FROM comptes_rendus WHERE user_id = ?", (user_id,))
+    conn.execute("DELETE FROM usage_audio WHERE user_id = ?", (user_id,))
+    conn.execute("DELETE FROM utilisateurs WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+    return {"supprime": True}
+
+
+# ======================================================================
 #  PRÉFÉRENCES UTILISATEUR (valeurs par défaut des comptes-rendus)
 # ======================================================================
 class Preferences(BaseModel):

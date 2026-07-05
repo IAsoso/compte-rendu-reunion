@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Synthia — Nouveau mot de passe</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
+</head>
+<body class="page-auth">
+  <header>
+    <a href="index.html" class="logo-lien">
+      <div class="logo">S</div>
+      <div>
+        <h1>Synthia</h1>
+        <div class="tagline">Vos réunions, résumées par l'IA</div>
+      </div>
+    </a>
+    <nav class="nav-liens">
+      <a href="connexion.html" class="lien-retour">← Connexion</a>
+    </nav>
+  </header>
+
+  <main>
+    <form class="carte-auth rise" id="formReinit" novalidate>
+      <h2 class="auth-titre">Nouveau mot de passe</h2>
+      <p class="auth-sous-titre">Choisissez votre nouveau mot de passe (8 caractères minimum).</p>
+
+      <div class="champ">
+        <label for="motDePasse">Nouveau mot de passe</label>
+        <input type="password" id="motDePasse" autocomplete="new-password" placeholder="Au moins 8 caractères" required>
+      </div>
+
+      <button type="submit" class="cta btn-auth" id="btnReinit">Mettre à jour</button>
+      <p class="auth-message" id="message"></p>
+
+      <p class="auth-bascule">
+        <a href="connexion.html">Retour à la connexion</a>
+      </p>
+    </form>
+  </main>
+
+  <footer class="pied">
+    <p>Synthia — Comptes-rendus de réunion par IA</p>
+    <p class="pied-liens">
+      <a href="mentions-legales.html">Mentions légales</a> ·
+      <a href="cgu.html">CGU</a> ·
+      <a href="confidentialite.html">Confidentialité</a>
+    </p>
+  </footer>
+
+  <script>
+    const form = document.getElementById("formReinit");
+    const bouton = document.getElementById("btnReinit");
+    const message = document.getElementById("message");
+    const jeton = new URLSearchParams(window.location.search).get("jeton") || "";
+
+    if (!jeton) {
+      message.className = "auth-message erreur";
+      message.textContent = "Lien incomplet — utilisez le lien reçu par email.";
+      bouton.disabled = true;
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (!jeton) return;
+      message.className = "auth-message";
+      message.textContent = "";
+      const mdp = document.getElementById("motDePasse").value;
+      if (mdp.length < 8) {
+        message.className = "auth-message erreur";
+        message.textContent = "Le mot de passe doit contenir au moins 8 caractères.";
+        return;
+      }
+      bouton.disabled = true;
+      bouton.textContent = "Mise à jour…";
+      try {
+        const r = await fetch(API_BASE_URL + "/reinitialiser-mot-de-passe", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jeton: jeton, nouveau_mot_de_passe: mdp }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(typeof d.detail === "string" ? d.detail : "Échec de la mise à jour.");
+        message.className = "auth-message succes";
+        message.textContent = "✅ " + d.message;
+        setTimeout(() => (window.location.href = "connexion.html"), 1800);
+      } catch (erreur) {
+        message.className = "auth-message erreur";
+        message.textContent = erreur.message || "Serveur injoignable.";
+        bouton.disabled = false;
+        bouton.textContent = "Mettre à jour";
+      }
+    });
+  </script>
+</body>
+</html>

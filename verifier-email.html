@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Synthia — Vérification de l'email</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
+</head>
+<body class="page-auth">
+  <header>
+    <a href="index.html" class="logo-lien">
+      <div class="logo">S</div>
+      <div>
+        <h1>Synthia</h1>
+        <div class="tagline">Vos réunions, résumées par l'IA</div>
+      </div>
+    </a>
+    <nav class="nav-liens">
+      <a href="connexion.html" class="lien-retour">Connexion</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="carte-auth rise" style="text-align: center;">
+      <h2 class="auth-titre">Vérification de l'email</h2>
+      <p class="auth-sous-titre" id="etat">Vérification en cours…</p>
+      <a href="app.html" class="cta btn-auth cache" id="ctaApp">Ouvrir Synthia →</a>
+      <p class="auth-message" id="message"></p>
+    </div>
+  </main>
+
+  <footer class="pied">
+    <p>Synthia — Comptes-rendus de réunion par IA</p>
+    <p class="pied-liens">
+      <a href="mentions-legales.html">Mentions légales</a> ·
+      <a href="cgu.html">CGU</a> ·
+      <a href="confidentialite.html">Confidentialité</a>
+    </p>
+  </footer>
+
+  <script>
+    const etat = document.getElementById("etat");
+    const message = document.getElementById("message");
+    const jeton = new URLSearchParams(window.location.search).get("jeton") || "";
+
+    (async () => {
+      if (!jeton) {
+        etat.textContent = "Lien incomplet — utilisez le lien reçu par email.";
+        return;
+      }
+      try {
+        const r = await fetch(API_BASE_URL + "/verifier-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ jeton: jeton }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(typeof d.detail === "string" ? d.detail : "Lien invalide ou expiré.");
+        etat.textContent = "✅ " + d.message;
+        document.getElementById("ctaApp").classList.remove("cache");
+      } catch (erreur) {
+        etat.textContent = "❌ " + (erreur.message || "Serveur injoignable.");
+      }
+    })();
+  </script>
+</body>
+</html>

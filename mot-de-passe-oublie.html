@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Synthia — Mot de passe oublié</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
+</head>
+<body class="page-auth">
+  <header>
+    <a href="index.html" class="logo-lien">
+      <div class="logo">S</div>
+      <div>
+        <h1>Synthia</h1>
+        <div class="tagline">Vos réunions, résumées par l'IA</div>
+      </div>
+    </a>
+    <nav class="nav-liens">
+      <a href="connexion.html" class="lien-retour">← Connexion</a>
+    </nav>
+  </header>
+
+  <main>
+    <form class="carte-auth rise" id="formOubli" novalidate>
+      <h2 class="auth-titre">Mot de passe oublié</h2>
+      <p class="auth-sous-titre">
+        Indiquez votre email : si un compte existe, vous recevrez un lien pour
+        choisir un nouveau mot de passe (valable 1 heure).
+      </p>
+
+      <div class="champ">
+        <label for="email">Email</label>
+        <input type="email" id="email" autocomplete="email" placeholder="vous@exemple.com" required>
+      </div>
+
+      <button type="submit" class="cta btn-auth" id="btnEnvoyer">Envoyer le lien</button>
+      <p class="auth-message" id="message"></p>
+
+      <p class="auth-bascule">
+        <a href="connexion.html">Retour à la connexion</a>
+      </p>
+    </form>
+  </main>
+
+  <footer class="pied">
+    <p>Synthia — Comptes-rendus de réunion par IA</p>
+    <p class="pied-liens">
+      <a href="mentions-legales.html">Mentions légales</a> ·
+      <a href="cgu.html">CGU</a> ·
+      <a href="confidentialite.html">Confidentialité</a>
+    </p>
+  </footer>
+
+  <script>
+    const form = document.getElementById("formOubli");
+    const bouton = document.getElementById("btnEnvoyer");
+    const message = document.getElementById("message");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      message.className = "auth-message";
+      message.textContent = "";
+      bouton.disabled = true;
+      bouton.textContent = "Envoi…";
+      try {
+        const r = await fetch(API_BASE_URL + "/mot-de-passe-oublie", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: document.getElementById("email").value.trim() }),
+        });
+        const d = await r.json();
+        if (!r.ok) throw new Error(typeof d.detail === "string" ? d.detail : "Vérifiez le format de votre email.");
+        message.className = "auth-message succes";
+        message.textContent = d.message;
+      } catch (erreur) {
+        message.className = "auth-message erreur";
+        message.textContent = erreur.message || "Serveur injoignable.";
+      } finally {
+        bouton.disabled = false;
+        bouton.textContent = "Envoyer le lien";
+      }
+    });
+  </script>
+</body>
+</html>

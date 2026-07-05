@@ -157,6 +157,82 @@ def rl_reinitialiser(cle):
         _rl_compteurs.pop(cle, None)
 
 
+# ----------------------------------------------------------------------
+#  Envoi d'emails (Resend) + jetons à usage unique
+# ----------------------------------------------------------------------
+#  Sans RESEND_API_KEY (dev local), les emails ne partent pas : le lien est
+#  affiché dans les logs du serveur pour pouvoir tester le flux de bout en
+#  bout. En production, configurer RESEND_API_KEY (+ EMAIL_FROM une fois un
+#  domaine vérifié chez Resend ; par défaut onboarding@resend.dev).
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+EMAIL_FROM = os.getenv("EMAIL_FROM", "Synthia <onboarding@resend.dev>")
+JETON_RESET_DUREE_MIN = 60          # lien de réinitialisation : 1 h
+JETON_VERIF_DUREE_MIN = 24 * 60     # lien de vérification : 24 h
+
+import hashlib
+import httpx
+
+
+def envoyer_email(destinataire, sujet, html):
+    """Envoie un email via l'API Resend. En mode dev (pas de clé), trace
+    seulement dans les logs. Lève RuntimeError en cas d'échec d'envoi réel."""
+    if not RESEND_API_KEY:
+        print(f"[EMAIL non envoyé — RESEND_API_KEY absente] À: {destinataire} | Sujet: {sujet}")
+        return
+    reponse = httpx.post(
+        "https://api.resend.com/emails",
+        headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+        json={"from": EMAIL_FROM, "to": [destinataire], "subject": sujet, "html": html},
+        timeout=10,
+    )
+    if reponse.status_code >= 400:
+        raise RuntimeError(f"Échec d'envoi email (Resend {reponse.status_code}).")
+
+
+def creer_jeton_email(user_id, type_jeton, duree_minutes):
+    """Génère un jeton aléatoire, stocke son HASH en base, renvoie le jeton
+    en clair (à mettre dans le lien envoyé par email, jamais en base)."""
+    jeton = secrets.token_urlsafe(32)
+    jeton_hash = hashlib.sha256(jeton.encode()).hexdigest()
+    expire_a = (datetime.now() + timedelta(minutes=duree_minutes)).isoformat(timespec="seconds")
+    conn = sqlite3.connect(CHEMIN_DB)
+    # Un seul jeton actif par (utilisateur, type) : les précédents sont invalidés.
+    conn.execute(
+        "UPDATE jetons_email SET utilise = 1 WHERE user_id = ? AND type = ?",
+        (user_id, type_jeton),
+    )
+    conn.execute(
+        "INSERT INTO jetons_email (user_id, jeton_hash, type, expire_a) VALUES (?, ?, ?, ?)",
+        (user_id, jeton_hash, type_jeton, expire_a),
+    )
+    conn.commit()
+    conn.close()
+    return jeton
+
+
+def consommer_jeton_email(jeton, type_jeton):
+    """Valide un jeton (hash correspondant, bon type, non utilisé, non expiré),
+    le marque utilisé, et renvoie le user_id — ou None si invalide."""
+    jeton_hash = hashlib.sha256(jeton.encode()).hexdigest()
+    conn = sqlite3.connect(CHEMIN_DB)
+    ligne = conn.execute(
+        "SELECT id, user_id, expire_a FROM jetons_email "
+        "WHERE jeton_hash = ? AND type = ? AND utilise = 0",
+        (jeton_hash, type_jeton),
+    ).fetchone()
+    if ligne is None:
+        conn.close()
+        return None
+    jeton_id, user_id, expire_a = ligne
+    if datetime.now() > datetime.fromisoformat(expire_a):
+        conn.close()
+        return None
+    conn.execute("UPDATE jetons_email SET utilise = 1 WHERE id = ?", (jeton_id,))
+    conn.commit()
+    conn.close()
+    return user_id
+
+
 def hacher_mot_de_passe(mot_de_passe: str) -> str:
     """Renvoie le hash bcrypt (avec sel) d'un mot de passe en clair."""
     return contexte_mdp.hash(mot_de_passe)
@@ -370,6 +446,28 @@ def init_db():
         """
     )
 
+    # Migration : vérification d'email. DEFAULT 1 pour ne pas bloquer les
+    # comptes créés avant cette fonctionnalité ; les nouveaux comptes email
+    # démarrent à 0 (voir creer_utilisateur), Google à 1 (email déjà vérifié).
+    if "email_verifie" not in cols_users:
+        conn.execute("ALTER TABLE utilisateurs ADD COLUMN email_verifie INTEGER DEFAULT 1")
+
+    # Jetons à usage unique (réinitialisation de mot de passe, vérification
+    # d'email). SEUL LE HASH SHA-256 du jeton est stocké : une fuite de la
+    # base ne permet pas de réutiliser les liens envoyés par email.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS jetons_email (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id    INTEGER NOT NULL REFERENCES utilisateurs(id),
+            jeton_hash TEXT NOT NULL,
+            type       TEXT NOT NULL,          -- 'reset' ou 'verification'
+            expire_a   TEXT NOT NULL,          -- ISO datetime
+            utilise    INTEGER NOT NULL DEFAULT 0
+        )
+        """
+    )
+
     conn.commit()
     conn.close()
 
@@ -540,15 +638,17 @@ def get_user_id_par_stripe_customer(stripe_customer_id):
 # ----------------------------------------------------------------------
 #  Accès à la table utilisateurs
 # ----------------------------------------------------------------------
-def creer_utilisateur(email, mot_de_passe_hash):
+def creer_utilisateur(email, mot_de_passe_hash, email_verifie=0):
     """Insère un nouvel utilisateur et renvoie son id. Lève sqlite3.IntegrityError
-    si l'email existe déjà (contrainte UNIQUE)."""
+    si l'email existe déjà (contrainte UNIQUE). email_verifie vaut 0 pour une
+    inscription classique (un lien de confirmation est envoyé), 1 pour Google
+    (l'email est déjà prouvé par Google)."""
     conn = sqlite3.connect(CHEMIN_DB)
     try:
         curseur = conn.execute(
-            "INSERT INTO utilisateurs (email, mot_de_passe_hash, date_creation) "
-            "VALUES (?, ?, ?)",
-            (email, mot_de_passe_hash, datetime.now().isoformat(timespec="seconds")),
+            "INSERT INTO utilisateurs (email, mot_de_passe_hash, date_creation, email_verifie) "
+            "VALUES (?, ?, ?, ?)",
+            (email, mot_de_passe_hash, datetime.now().isoformat(timespec="seconds"), email_verifie),
         )
         conn.commit()
         return curseur.lastrowid
@@ -577,7 +677,7 @@ def get_ou_creer_utilisateur_google(email):
     if utilisateur is not None:
         return utilisateur["id"]
     hash_inutilisable = hacher_mot_de_passe(secrets.token_urlsafe(32))
-    return creer_utilisateur(email, hash_inutilisable)
+    return creer_utilisateur(email, hash_inutilisable, email_verifie=1)
 
 
 def enregistrer_compte_rendu(user_id, type_reunion, format_souhaite, transcription, compte_rendu, actions):
@@ -1018,6 +1118,24 @@ def inscription(identifiants: IdentifiantsInscription, requete: Request):
         raise HTTPException(status_code=409, detail="Un compte existe déjà avec cet email.")
 
     rl_enregistrer(cle_ip)  # compte créé : on l'ajoute au compteur anti-spam
+
+    # Email de confirmation (lien 24 h). Best effort : un échec d'envoi ne
+    # bloque pas l'inscription — l'utilisateur pourra redemander le lien.
+    try:
+        jeton = creer_jeton_email(user_id, "verification", JETON_VERIF_DUREE_MIN)
+        lien = f"{URL_FRONTEND}/verifier-email.html?jeton={jeton}"
+        if not RESEND_API_KEY:
+            print(f"[DEV] Lien de vérification pour {email} : {lien}")
+        envoyer_email(
+            email,
+            "Confirmez votre adresse email — Synthia",
+            f"<p>Bienvenue sur Synthia !</p><p>Confirmez votre adresse en cliquant sur "
+            f"<a href=\"{lien}\">ce lien</a> (valable 24 heures).</p>"
+            f"<p>Si vous n'êtes pas à l'origine de cette inscription, ignorez cet email.</p>",
+        )
+    except Exception as erreur:
+        print("Envoi de l'email de vérification échoué :", erreur)
+
     return {"token": creer_token(user_id), "email": email}
 
 
@@ -1047,6 +1165,88 @@ def connexion(identifiants: IdentifiantsAuth, requete: Request):
 
     rl_reinitialiser(cle_bf)  # connexion réussie : compteur remis à zéro
     return {"token": creer_token(utilisateur["id"]), "email": email}
+
+
+# ----------------------------------------------------------------------
+#  Mot de passe oublié / réinitialisation / vérification d'email
+# ----------------------------------------------------------------------
+class DemandeReset(BaseModel):
+    email: EmailStr
+
+
+class ReinitialisationMdp(BaseModel):
+    jeton: str
+    nouveau_mot_de_passe: str
+
+
+class JetonSeul(BaseModel):
+    jeton: str
+
+
+@app.post("/mot-de-passe-oublie")
+def mot_de_passe_oublie(demande: DemandeReset, requete: Request):
+    """Envoie un lien de réinitialisation (valable 1 h). Répond TOUJOURS le
+    même message, que l'email existe ou non (anti-énumération)."""
+    email = demande.email.lower().strip()
+    rl_verifier(
+        f"reset:{ip_client(requete)}", 3, 60 * 60,
+        "Trop de demandes de réinitialisation. Réessayez dans une heure.",
+    )
+    rl_enregistrer(f"reset:{ip_client(requete)}")
+
+    utilisateur = get_utilisateur_par_email(email)
+    if utilisateur is not None:
+        try:
+            jeton = creer_jeton_email(utilisateur["id"], "reset", JETON_RESET_DUREE_MIN)
+            lien = f"{URL_FRONTEND}/reinitialisation.html?jeton={jeton}"
+            if not RESEND_API_KEY:
+                print(f"[DEV] Lien de réinitialisation pour {email} : {lien}")
+            envoyer_email(
+                email,
+                "Réinitialisation de votre mot de passe — Synthia",
+                f"<p>Pour choisir un nouveau mot de passe, cliquez sur "
+                f"<a href=\"{lien}\">ce lien</a> (valable 1 heure).</p>"
+                f"<p>Si vous n'avez rien demandé, ignorez cet email : votre mot de "
+                f"passe reste inchangé.</p>",
+            )
+        except Exception as erreur:
+            print("Envoi de l'email de réinitialisation échoué :", erreur)
+
+    return {"message": "Si un compte existe avec cet email, un lien de réinitialisation a été envoyé."}
+
+
+@app.post("/reinitialiser-mot-de-passe")
+def reinitialiser_mot_de_passe(donnees: ReinitialisationMdp):
+    """Définit un nouveau mot de passe à partir d'un jeton de réinitialisation
+    valide (usage unique, 1 h)."""
+    if len(donnees.nouveau_mot_de_passe) < 8:
+        raise HTTPException(status_code=400, detail="Le mot de passe doit contenir au moins 8 caractères.")
+
+    user_id = consommer_jeton_email(donnees.jeton, "reset")
+    if user_id is None:
+        raise HTTPException(status_code=400, detail="Lien invalide ou expiré. Refaites une demande.")
+
+    conn = sqlite3.connect(CHEMIN_DB)
+    conn.execute(
+        "UPDATE utilisateurs SET mot_de_passe_hash = ? WHERE id = ?",
+        (hacher_mot_de_passe(donnees.nouveau_mot_de_passe), user_id),
+    )
+    conn.commit()
+    conn.close()
+    return {"message": "Mot de passe mis à jour. Vous pouvez vous connecter."}
+
+
+@app.post("/verifier-email")
+def verifier_email(donnees: JetonSeul):
+    """Marque l'email de l'utilisateur comme vérifié (jeton 24 h, usage unique)."""
+    user_id = consommer_jeton_email(donnees.jeton, "verification")
+    if user_id is None:
+        raise HTTPException(status_code=400, detail="Lien invalide ou expiré.")
+    conn = sqlite3.connect(CHEMIN_DB)
+    conn.execute("UPDATE utilisateurs SET email_verifie = 1 WHERE id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+    return {"message": "Adresse email confirmée, merci !"}
 
 
 class IdentifiantsGoogle(BaseModel):

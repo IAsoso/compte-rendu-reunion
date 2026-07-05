@@ -25,6 +25,7 @@
     <nav class="nav-liens">
       <a href="historique.html" class="lien-retour">Historique</a>
       <a href="parametres.html" class="lien-retour">Paramètres</a>
+      <a href="tarifs.html" class="lien-retour">Tarifs</a>
       <a href="index.html" class="lien-retour">← Accueil</a>
       <a href="#" class="lien-retour" onclick="deconnexion(); return false;">Se déconnecter</a>
     </nav>
@@ -93,6 +94,7 @@
     <p class="pourcentage" id="pourcentageTexte">0 %</p>
     <p class="sous-chargement">Les longues réunions sont découpées, puis résumées partie par partie.</p>
     <p class="erreur-chargement cache" id="erreurChargement"></p>
+    <a href="tarifs.html" class="cta cache" id="erreurCtaTarifs" style="margin-top: 6px;">Voir les offres →</a>
   </div>
 
   <script>
@@ -196,6 +198,17 @@
         });
         const donneesJob = await reponse.json();
 
+        // Quota mensuel dépassé (402) : on bloque avec un message clair, pas
+        // d'appel Groq/Gemini n'a été fait côté serveur dans ce cas.
+        if (reponse.status === 402) {
+          afficherBlocageQuota(donneesJob.detail);
+          return;
+        }
+        if (!reponse.ok) {
+          afficherErreurChargement(donneesJob.detail || "Le serveur a refusé la demande.");
+          return;
+        }
+
         // 2. On suit la progression jusqu'à la fin
         suivreProgression(donneesJob.job_id, typeReunion, format);
       } catch (erreur) {
@@ -250,10 +263,20 @@
     }
 
     function afficherErreurChargement(erreur) {
-      erreurChargement.textContent =
-        "❌ Une erreur est survenue. Vérifiez que le serveur est bien lancé.";
+      const estTexte = typeof erreur === "string";
+      erreurChargement.textContent = estTexte
+        ? "❌ " + erreur
+        : "❌ Une erreur est survenue. Vérifiez que le serveur est bien lancé.";
       erreurChargement.classList.remove("cache");
       console.error(erreur);
+    }
+
+    // Cas spécifique : quota mensuel atteint (402). On affiche le message du
+    // backend + un lien direct vers les offres, sans jargon technique.
+    function afficherBlocageQuota(detail) {
+      erreurChargement.textContent = "🔒 " + (detail || "Quota mensuel atteint.");
+      erreurChargement.classList.remove("cache");
+      document.getElementById("erreurCtaTarifs").classList.remove("cache");
     }
 
     // ================= États visuels =================
@@ -321,5 +344,13 @@
       timerEl.textContent = m + ":" + s;
     }
   </script>
+  <footer class="pied">
+    <p>Synthia — Comptes-rendus de réunion par IA</p>
+    <p class="pied-liens">
+      <a href="mentions-legales.html">Mentions légales</a> ·
+      <a href="cgu.html">CGU</a> ·
+      <a href="confidentialite.html">Confidentialité</a>
+    </p>
+  </footer>
 </body>
 </html>

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Header
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 import tempfile
@@ -25,6 +25,7 @@ import groq
 from groq import Groq
 from dotenv import load_dotenv
 import json
+import stripe
 
 # --- Charger les variables du fichier .env (dont la clé Gemini) ---
 load_dotenv()
@@ -161,6 +162,53 @@ print("Backend prêt — transcription via l'API Groq.")
 
 
 # ======================================================================
+#  ABONNEMENTS & PAIEMENT (Stripe)
+# ----------------------------------------------------------------------
+#  - PLANS définit les offres commerciales : quota de minutes/mois et
+#    l'identifiant du "Price" Stripe correspondant (créé dans le Dashboard
+#    Stripe, PAS dans ce code). Le plan "gratuit" n'a pas de Price Stripe.
+#  - URL_FRONTEND sert à construire les liens de retour après Checkout /
+#    Customer Portal (reprend la 1ère origine autorisée en CORS).
+# ======================================================================
+stripe.api_key = os.getenv("STRIPE_SECRET_KEY", "")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
+
+URL_FRONTEND = (
+    origines_autorisees[0]
+    if origines_autorisees and origines_autorisees[0] != "*"
+    else "http://127.0.0.1:5500"
+)
+
+PLANS = {
+    "gratuit": {
+        "label": "Gratuit",
+        "prix_eur": 0,
+        "minutes_mois": 120,
+        "stripe_price_id": None,
+    },
+    "pro": {
+        "label": "Pro",
+        "prix_eur": 15,
+        "minutes_mois": 1200,
+        "stripe_price_id": os.getenv("STRIPE_PRICE_ID_PRO", ""),
+    },
+    "business": {
+        "label": "Business",
+        "prix_eur": 29,
+        "minutes_mois": 3000,
+        "stripe_price_id": os.getenv("STRIPE_PRICE_ID_BUSINESS", ""),
+    },
+}
+
+# Table inverse : Price Stripe -> nom du plan (utile pour le webhook).
+PRICE_VERS_PLAN = {
+    infos["stripe_price_id"]: nom
+    for nom, infos in PLANS.items()
+    if infos["stripe_price_id"]
+}
+
+
+# ======================================================================
 #  BASE DE DONNÉES (SQLite) — stockage permanent des comptes-rendus
 # ======================================================================
 # Chemin de la base : résolu par rapport à ce fichier (robuste quel que soit le
@@ -221,6 +269,30 @@ def init_db():
     if "format_defaut" not in cols_users:
         conn.execute("ALTER TABLE utilisateurs ADD COLUMN format_defaut TEXT")
 
+    # Migration : abonnement / facturation Stripe. "plan" vaut "gratuit" par
+    # défaut (NULL traité comme "gratuit" à la lecture, cf. get_plan_utilisateur).
+    if "plan" not in cols_users:
+        conn.execute("ALTER TABLE utilisateurs ADD COLUMN plan TEXT DEFAULT 'gratuit'")
+    if "stripe_customer_id" not in cols_users:
+        conn.execute("ALTER TABLE utilisateurs ADD COLUMN stripe_customer_id TEXT")
+    if "stripe_subscription_id" not in cols_users:
+        conn.execute("ALTER TABLE utilisateurs ADD COLUMN stripe_subscription_id TEXT")
+    if "abonnement_statut" not in cols_users:
+        conn.execute("ALTER TABLE utilisateurs ADD COLUMN abonnement_statut TEXT")
+
+    # Table de suivi d'usage : une ligne par compte-rendu traité avec succès,
+    # utilisée pour calculer la consommation du mois en cours par utilisateur.
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS usage_audio (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id       INTEGER NOT NULL REFERENCES utilisateurs(id),
+            date_creation TEXT NOT NULL,
+            duree_minutes REAL NOT NULL
+        )
+        """
+    )
+
     conn.commit()
     conn.close()
 
@@ -257,6 +329,135 @@ def maj_preferences(user_id, type_reunion, format_souhaite):
     )
     conn.commit()
     conn.close()
+
+
+# ======================================================================
+#  ABONNEMENT & QUOTA (minutes d'audio traitées par mois)
+# ----------------------------------------------------------------------
+#  Le quota est vérifié AVANT tout appel Groq/Gemini (coût réel), et la
+#  consommation n'est enregistrée qu'APRÈS un traitement réussi.
+# ======================================================================
+
+def get_plan_utilisateur(user_id):
+    """Renvoie le nom du plan de l'utilisateur ("gratuit" par défaut/repli)."""
+    conn = sqlite3.connect(CHEMIN_DB)
+    ligne = conn.execute("SELECT plan FROM utilisateurs WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    plan = (ligne[0] if ligne else None) or "gratuit"
+    return plan if plan in PLANS else "gratuit"
+
+
+def minutes_utilisees_ce_mois(user_id):
+    """Somme des minutes d'audio traitées depuis le 1er du mois en cours."""
+    debut_mois = datetime.now().replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0
+    ).isoformat(timespec="seconds")
+    conn = sqlite3.connect(CHEMIN_DB)
+    ligne = conn.execute(
+        "SELECT COALESCE(SUM(duree_minutes), 0) FROM usage_audio "
+        "WHERE user_id = ? AND date_creation >= ?",
+        (user_id, debut_mois),
+    ).fetchone()
+    conn.close()
+    return ligne[0] or 0.0
+
+
+def enregistrer_usage(user_id, duree_minutes):
+    """Enregistre la consommation d'un compte-rendu traité avec succès."""
+    conn = sqlite3.connect(CHEMIN_DB)
+    conn.execute(
+        "INSERT INTO usage_audio (user_id, date_creation, duree_minutes) VALUES (?, ?, ?)",
+        (user_id, datetime.now().isoformat(timespec="seconds"), duree_minutes),
+    )
+    conn.commit()
+    conn.close()
+
+
+def duree_minutes_fichier(chemin_audio):
+    """Durée (en minutes) d'un fichier audio, sans lancer aucun traitement IA."""
+    return len(AudioSegment.from_file(chemin_audio)) / 60000.0
+
+
+def verifier_quota(user_id, duree_minutes_demandees):
+    """Lève une HTTPException 402 si traiter cet audio dépasserait le quota
+    mensuel du plan de l'utilisateur. Appelée AVANT tout appel Groq/Gemini
+    pour ne jamais payer un traitement qu'on va refuser."""
+    plan = get_plan_utilisateur(user_id)
+    quota = PLANS[plan]["minutes_mois"]
+    deja_utilisees = minutes_utilisees_ce_mois(user_id)
+    if deja_utilisees + duree_minutes_demandees > quota:
+        restantes = max(0.0, quota - deja_utilisees)
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"Quota mensuel atteint ({quota} min incluses dans l'offre "
+                f"{PLANS[plan]['label']}). Il vous reste {restantes:.1f} min ce "
+                "mois-ci. Passez à une offre supérieure pour continuer."
+            ),
+        )
+
+
+def mesurer_duree_et_verifier_quota(chemin_temp, user_id):
+    """Mesure la durée de l'audio puis vérifie le quota. En cas d'échec (fichier
+    illisible ou quota dépassé), supprime le fichier temporaire et lève une
+    HTTPException adaptée. Renvoie la durée en minutes si tout est bon."""
+    try:
+        duree_min = duree_minutes_fichier(chemin_temp)
+    except Exception:
+        if os.path.exists(chemin_temp):
+            os.remove(chemin_temp)
+        raise HTTPException(status_code=400, detail="Fichier audio illisible ou invalide.")
+    try:
+        verifier_quota(user_id, duree_min)
+    except HTTPException:
+        if os.path.exists(chemin_temp):
+            os.remove(chemin_temp)
+        raise
+    return duree_min
+
+
+def get_infos_facturation(user_id):
+    """Renvoie (email, stripe_customer_id) de l'utilisateur."""
+    conn = sqlite3.connect(CHEMIN_DB)
+    ligne = conn.execute(
+        "SELECT email, stripe_customer_id FROM utilisateurs WHERE id = ?", (user_id,)
+    ).fetchone()
+    conn.close()
+    if ligne is None:
+        raise HTTPException(status_code=404, detail="Utilisateur introuvable.")
+    return ligne[0], ligne[1]
+
+
+def maj_stripe_customer_id(user_id, stripe_customer_id):
+    conn = sqlite3.connect(CHEMIN_DB)
+    conn.execute(
+        "UPDATE utilisateurs SET stripe_customer_id = ? WHERE id = ?",
+        (stripe_customer_id, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def maj_abonnement(user_id, plan, subscription_id, statut):
+    """Met à jour le plan/l'état d'abonnement d'un utilisateur (appelé depuis
+    le webhook Stripe, jamais directement depuis le frontend)."""
+    conn = sqlite3.connect(CHEMIN_DB)
+    conn.execute(
+        "UPDATE utilisateurs SET plan = ?, stripe_subscription_id = ?, "
+        "abonnement_statut = ? WHERE id = ?",
+        (plan, subscription_id, statut, user_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def get_user_id_par_stripe_customer(stripe_customer_id):
+    conn = sqlite3.connect(CHEMIN_DB)
+    ligne = conn.execute(
+        "SELECT id FROM utilisateurs WHERE stripe_customer_id = ?", (stripe_customer_id,)
+    ).fetchone()
+    conn.close()
+    return ligne[0] if ligne else None
 
 
 # ----------------------------------------------------------------------
@@ -663,6 +864,10 @@ async def transcrire(
         fichier_temp.write(contenu)
         chemin_temp = fichier_temp.name
 
+    # Quota : vérifié AVANT tout appel Groq/Gemini (coût réel). On ne paie
+    # jamais un traitement qu'on va de toute façon refuser.
+    duree_min = mesurer_duree_et_verifier_quota(chemin_temp, user_id)
+
     # Progression neutre : cette route reste synchrone (compatibilité).
     def sans_progression(phase, courant, total, message):
         pass
@@ -671,6 +876,7 @@ async def transcrire(
         resultat = traiter_audio_complet(
             chemin_temp, type_reunion, format, sans_progression, user_id
         )
+        enregistrer_usage(user_id, duree_min)
     except RuntimeError as erreur:
         raise HTTPException(status_code=502, detail=str(erreur))
     finally:
@@ -694,10 +900,24 @@ class IdentifiantsAuth(BaseModel):
     mot_de_passe: str
 
 
+class IdentifiantsInscription(IdentifiantsAuth):
+    # Acceptation des CGU + politique de confidentialité. Optionnel dans le
+    # schéma (défaut False) pour renvoyer une 400 claire plutôt qu'une 422
+    # Pydantic si le champ est absent du payload.
+    cgu_acceptees: bool = False
+
+
 @app.post("/inscription")
-def inscription(identifiants: IdentifiantsAuth):
+def inscription(identifiants: IdentifiantsInscription):
     """Crée un compte : hache le mot de passe, enregistre l'utilisateur,
-    renvoie un JWT. Refuse si l'email est déjà pris."""
+    renvoie un JWT. Refuse si l'email est déjà pris ou si les CGU ne sont pas
+    acceptées (contrôle serveur, indépendant du JavaScript du formulaire)."""
+    if not identifiants.cgu_acceptees:
+        raise HTTPException(
+            status_code=400,
+            detail="Vous devez accepter les CGU et la politique de confidentialité.",
+        )
+
     email = identifiants.email.lower().strip()
 
     if len(identifiants.mot_de_passe) < 8:
@@ -785,6 +1005,132 @@ def ecrire_preferences(prefs: Preferences, user_id: int = Depends(utilisateur_co
     return get_preferences(user_id)
 
 
+# ======================================================================
+#  ROUTES ABONNEMENT / PAIEMENT (Stripe)
+# ----------------------------------------------------------------------
+#  - /abonnement/statut          : plan + consommation du mois (frontend)
+#  - /abonnement/creer-session   : lance un Stripe Checkout (souscription)
+#  - /abonnement/portail         : Stripe Customer Portal (gérer/annuler)
+#  - /abonnement/webhook         : reçoit les événements Stripe (PAS de JWT :
+#    authentifié par la signature Stripe, pas par notre Authorization Bearer)
+# ======================================================================
+
+@app.get("/abonnement/statut")
+def statut_abonnement(user_id: int = Depends(utilisateur_courant)):
+    plan = get_plan_utilisateur(user_id)
+    quota = PLANS[plan]["minutes_mois"]
+    utilisees = minutes_utilisees_ce_mois(user_id)
+    return {
+        "plan": plan,
+        "label": PLANS[plan]["label"],
+        "minutes_utilisees": round(utilisees, 1),
+        "minutes_quota": quota,
+        "minutes_restantes": max(0.0, round(quota - utilisees, 1)),
+    }
+
+
+class SessionCheckoutDemande(BaseModel):
+    plan: str  # "pro" ou "business"
+
+
+@app.post("/abonnement/creer-session")
+def creer_session_checkout(
+    demande: SessionCheckoutDemande, user_id: int = Depends(utilisateur_courant)
+):
+    """Crée une session Stripe Checkout (abonnement) et renvoie son URL :
+    le frontend redirige simplement vers cette URL."""
+    if not stripe.api_key:
+        raise HTTPException(status_code=503, detail="Paiement non configuré (clé Stripe manquante).")
+    if demande.plan not in PLANS or demande.plan == "gratuit":
+        raise HTTPException(status_code=400, detail="Offre invalide.")
+    price_id = PLANS[demande.plan]["stripe_price_id"]
+    if not price_id:
+        raise HTTPException(status_code=503, detail="Cette offre n'est pas encore configurée côté paiement.")
+
+    email, stripe_customer_id = get_infos_facturation(user_id)
+    if not stripe_customer_id:
+        client = stripe.Customer.create(email=email, metadata={"user_id": str(user_id)})
+        stripe_customer_id = client.id
+        maj_stripe_customer_id(user_id, stripe_customer_id)
+
+    session = stripe.checkout.Session.create(
+        mode="subscription",
+        customer=stripe_customer_id,
+        line_items=[{"price": price_id, "quantity": 1}],
+        success_url=f"{URL_FRONTEND}/parametres.html?abonnement=succes",
+        cancel_url=f"{URL_FRONTEND}/tarifs.html?abonnement=annule",
+        client_reference_id=str(user_id),
+        metadata={"user_id": str(user_id), "plan": demande.plan},
+    )
+    return {"url": session.url}
+
+
+@app.post("/abonnement/portail")
+def creer_session_portail(user_id: int = Depends(utilisateur_courant)):
+    """Crée une session Stripe Customer Portal (gérer moyen de paiement,
+    changer d'offre, résilier) et renvoie son URL."""
+    if not stripe.api_key:
+        raise HTTPException(status_code=503, detail="Paiement non configuré (clé Stripe manquante).")
+    _, stripe_customer_id = get_infos_facturation(user_id)
+    if not stripe_customer_id:
+        raise HTTPException(status_code=400, detail="Aucun abonnement associé à ce compte pour le moment.")
+
+    session = stripe.billing_portal.Session.create(
+        customer=stripe_customer_id,
+        return_url=f"{URL_FRONTEND}/parametres.html",
+    )
+    return {"url": session.url}
+
+
+@app.post("/abonnement/webhook")
+async def webhook_stripe(requete: Request):
+    """Reçoit les événements Stripe. Authentifié par la signature Stripe
+    (en-tête Stripe-Signature + STRIPE_WEBHOOK_SECRET), PAS par un JWT."""
+    if not STRIPE_WEBHOOK_SECRET:
+        raise HTTPException(status_code=503, detail="Webhook Stripe non configuré.")
+
+    payload = await requete.body()
+    signature = requete.headers.get("stripe-signature", "")
+    try:
+        stripe.Webhook.construct_event(payload, signature, STRIPE_WEBHOOK_SECRET)
+    except (ValueError, stripe.error.SignatureVerificationError):
+        raise HTTPException(status_code=400, detail="Signature webhook invalide.")
+
+    # La signature est validée : on re-parse le payload en dict/list Python purs.
+    # (Les StripeObject renvoyés par construct_event n'exposent pas .get ni un
+    #  accès list standard ; json.loads évite ces pièges.)
+    evenement = json.loads(payload)
+    type_evt = evenement["type"]
+    data = evenement["data"]["object"]
+
+    if type_evt == "checkout.session.completed":
+        # Premier paiement réussi : on active le plan choisi.
+        metadonnees = data.get("metadata") or {}
+        if "user_id" in metadonnees and "plan" in metadonnees:
+            maj_abonnement(
+                int(metadonnees["user_id"]),
+                metadonnees["plan"],
+                data.get("subscription"),
+                "active",
+            )
+
+    elif type_evt in ("customer.subscription.updated", "customer.subscription.deleted"):
+        # Changement d'offre, renouvellement, échec de paiement, résiliation…
+        user_id = get_user_id_par_stripe_customer(data["customer"])
+        if user_id is not None:
+            statut = data.get("status", "inconnu")
+            if type_evt == "customer.subscription.deleted" or statut in (
+                "canceled", "unpaid", "incomplete_expired",
+            ):
+                maj_abonnement(user_id, "gratuit", None, "annule")
+            else:
+                price_id = data["items"]["data"][0]["price"]["id"]
+                nouveau_plan = PRICE_VERS_PLAN.get(price_id, "gratuit")
+                maj_abonnement(user_id, nouveau_plan, data["id"], statut)
+
+    return {"recu": True}
+
+
 # --- Modification du compte-rendu par IA (chat en langage naturel) ---
 class DemandeModification(BaseModel):
     compte_rendu: str
@@ -853,6 +1199,9 @@ async def transcrire_async(
         fichier_temp.write(contenu)
         chemin_temp = fichier_temp.name
 
+    # Quota : vérifié tout de suite, avant même de créer le job en arrière-plan.
+    duree_min = mesurer_duree_et_verifier_quota(chemin_temp, user_id)
+
     job_id = uuid.uuid4().hex
     travaux[job_id] = {
         "statut": "en_cours",
@@ -878,6 +1227,7 @@ async def transcrire_async(
             resultat = traiter_audio_complet(
                 chemin_temp, type_reunion, format, maj_progression, user_id
             )
+            enregistrer_usage(user_id, duree_min)
             travaux[job_id].update(
                 statut="termine",
                 pourcentage=100,

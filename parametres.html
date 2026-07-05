@@ -25,11 +25,29 @@
     <nav class="nav-liens">
       <a href="app.html" class="lien-retour">Nouvelle réunion</a>
       <a href="historique.html" class="lien-retour">Historique</a>
+      <a href="tarifs.html" class="lien-retour">Tarifs</a>
       <a href="#" class="lien-retour" onclick="deconnexion(); return false;">Se déconnecter</a>
     </nav>
   </header>
 
   <main>
+    <!-- Abonnement : plan actuel + consommation du mois -->
+    <div class="carte-auth rise" id="carteAbonnement" style="margin-bottom: 22px;">
+      <h2 class="auth-titre">Abonnement</h2>
+      <p class="auth-sous-titre" id="abonnementIntro">Chargement…</p>
+
+      <div class="usage-barre-fond cache" id="usageBarreFond">
+        <div class="usage-barre-remplissage" id="usageBarreRemplissage"></div>
+      </div>
+      <p class="usage-detail cache" id="usageDetail"></p>
+
+      <div class="abonnement-actions">
+        <a href="tarifs.html" class="btn-premium">Changer d'offre</a>
+        <button class="btn-premium" id="btnGererAbonnement" type="button">Gérer mon abonnement</button>
+      </div>
+      <p class="auth-message" id="messageAbonnement"></p>
+    </div>
+
     <form class="carte-auth rise" id="formParametres" novalidate>
       <h2 class="auth-titre">Paramètres</h2>
       <p class="auth-sous-titre">Vos préférences par défaut pour chaque nouveau compte-rendu.</p>
@@ -58,6 +76,62 @@
   </main>
 
   <script>
+    // ---- Abonnement : plan actuel + consommation du mois ----
+    const abonnementIntro = document.getElementById("abonnementIntro");
+    const usageBarreFond = document.getElementById("usageBarreFond");
+    const usageBarreRemplissage = document.getElementById("usageBarreRemplissage");
+    const usageDetail = document.getElementById("usageDetail");
+    const messageAbonnement = document.getElementById("messageAbonnement");
+    const btnGererAbonnement = document.getElementById("btnGererAbonnement");
+
+    // Retour depuis Stripe Checkout après un paiement réussi. Le webhook met
+    // à jour le plan de façon asynchrone : il peut y avoir un très court délai
+    // avant que /abonnement/statut ne reflète la nouvelle offre.
+    if (new URLSearchParams(window.location.search).get("abonnement") === "succes") {
+      messageAbonnement.className = "auth-message succes";
+      messageAbonnement.textContent = "✅ Paiement confirmé — votre offre est mise à jour (actualisez dans quelques secondes si besoin).";
+    }
+
+    (async () => {
+      try {
+        const reponse = await fetchAuth(API_BASE_URL + "/abonnement/statut");
+        if (!reponse.ok) throw new Error();
+        const statut = await reponse.json();
+
+        abonnementIntro.textContent = `Offre ${statut.label} — ${statut.minutes_quota} min de réunion incluses par mois.`;
+
+        const pourcentage = Math.min(100, Math.round((statut.minutes_utilisees / statut.minutes_quota) * 100));
+        usageBarreRemplissage.style.width = pourcentage + "%";
+        usageBarreFond.classList.remove("cache");
+        usageDetail.textContent = `${statut.minutes_utilisees} / ${statut.minutes_quota} min utilisées ce mois-ci (${statut.minutes_restantes} min restantes).`;
+        usageDetail.classList.remove("cache");
+
+        // Le plan gratuit n'a pas de Customer Stripe : rien à gérer, on invite à changer d'offre.
+        if (statut.plan === "gratuit") {
+          btnGererAbonnement.textContent = "Passer à une offre payante";
+          btnGererAbonnement.addEventListener("click", () => (window.location.href = "tarifs.html"));
+        } else {
+          btnGererAbonnement.addEventListener("click", async () => {
+            btnGererAbonnement.disabled = true;
+            btnGererAbonnement.textContent = "Redirection…";
+            try {
+              const r = await fetchAuth(API_BASE_URL + "/abonnement/portail", { method: "POST" });
+              const d = await r.json();
+              if (!r.ok) throw new Error(d.detail || "Impossible d'ouvrir la gestion de l'abonnement.");
+              window.location.href = d.url;
+            } catch (erreur) {
+              messageAbonnement.className = "auth-message erreur";
+              messageAbonnement.textContent = erreur.message || "Serveur injoignable.";
+              btnGererAbonnement.disabled = false;
+              btnGererAbonnement.textContent = "Gérer mon abonnement";
+            }
+          });
+        }
+      } catch (erreur) {
+        abonnementIntro.textContent = "Impossible de charger votre abonnement.";
+      }
+    })();
+
     const form = document.getElementById("formParametres");
     const bouton = document.getElementById("btnEnregistrer");
     const message = document.getElementById("message");
@@ -102,5 +176,13 @@
       }
     });
   </script>
+  <footer class="pied">
+    <p>Synthia — Comptes-rendus de réunion par IA</p>
+    <p class="pied-liens">
+      <a href="mentions-legales.html">Mentions légales</a> ·
+      <a href="cgu.html">CGU</a> ·
+      <a href="confidentialite.html">Confidentialité</a>
+    </p>
+  </footer>
 </body>
 </html>

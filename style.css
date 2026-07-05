@@ -990,6 +990,49 @@ html.js .reveal.visible { opacity: 1; transform: none; }
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
+/* Liens légaux dans le pied de page */
+.pied-liens { margin-top: 8px; }
+.pied-liens a {
+  color: var(--ink-2); text-decoration: none; font-weight: 500;
+}
+.pied-liens a:hover { color: var(--accent); text-decoration: underline; }
+
+/* Pages légales (mentions, CGU, confidentialité) */
+.legal-main { padding: 48px 0 24px; }
+.carte-legal {
+  max-width: 760px; margin: 0 auto 28px; text-align: left;
+}
+.carte-legal h1 {
+  font-size: 1.7rem; font-weight: 800; letter-spacing: -0.02em;
+  color: var(--ink); margin-bottom: 6px;
+}
+.carte-legal .legal-maj {
+  font-size: 0.85rem; color: var(--ink-3); margin-bottom: 24px;
+}
+.carte-legal h2 {
+  font-size: 1.1rem; font-weight: 700; color: var(--ink);
+  margin: 26px 0 10px;
+}
+.carte-legal p, .carte-legal li {
+  color: var(--ink-2); font-size: 0.96rem; line-height: 1.7;
+}
+.carte-legal ul { margin: 8px 0 8px 22px; }
+.carte-legal li { margin-bottom: 6px; }
+.carte-legal a { color: var(--accent); }
+.legal-important {
+  background: var(--accent-soft); border: 1px solid var(--line-2);
+  border-radius: var(--r-s); padding: 14px 16px; margin: 16px 0;
+  color: var(--ink) !important;
+}
+
+/* Case à cocher d'acceptation des CGU (inscription) */
+.champ-cgu {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin: 4px 0 18px; font-size: 0.88rem; color: var(--ink-2);
+}
+.champ-cgu input { margin-top: 3px; flex-shrink: 0; width: 16px; height: 16px; cursor: pointer; }
+.champ-cgu a { color: var(--accent); font-weight: 600; }
+
 .auth-bascule {
   margin-top: 24px; padding-top: 20px;
   border-top: 1px solid var(--line);
@@ -997,3 +1040,106 @@ html.js .reveal.visible { opacity: 1; transform: none; }
 }
 .auth-bascule a { color: var(--accent); font-weight: 600; text-decoration: none; }
 .auth-bascule a:hover { text-decoration: underline; }
+
+/* ------------------------------------------------------------------ */
+/* 12. TARIFS                                                          */
+/* ------------------------------------------------------------------ */
+.hero-tarifs { padding-bottom: 20px; }
+
+.section-tarifs { padding: 20px 24px 90px; }
+
+.grille-tarifs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 22px;
+  max-width: 1040px;
+  margin: 0 auto;
+  align-items: stretch;
+}
+
+.carte-tarif {
+  position: relative;
+  display: flex; flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-l);
+  padding: 38px 30px 30px;
+  box-shadow: var(--shadow-2);
+}
+
+.carte-tarif.recommandee {
+  border-color: var(--accent);
+  box-shadow: var(--shadow-accent);
+}
+
+.badge-recommande {
+  position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+  background: var(--grad); color: #fff;
+  font-size: 0.74rem; font-weight: 700; letter-spacing: 0.02em;
+  padding: 6px 16px; border-radius: 999px;
+  white-space: nowrap;
+  box-shadow: 0 6px 16px rgba(37, 99, 235, 0.3);
+}
+
+.tarif-nom { font-size: 1.05rem; font-weight: 700; color: var(--ink); }
+
+.tarif-prix {
+  font-size: 2.5rem; font-weight: 800; letter-spacing: -0.03em;
+  color: var(--ink); margin: 10px 0 2px;
+}
+.tarif-prix span { font-size: 0.95rem; font-weight: 500; color: var(--ink-3); }
+
+.tarif-quota { font-size: 0.9rem; color: var(--ink-2); margin-bottom: 22px; }
+
+.tarif-fonctionnalites {
+  list-style: none; display: flex; flex-direction: column; gap: 11px;
+  margin: 0 0 28px; padding: 0; flex: 1;
+}
+.tarif-fonctionnalites li {
+  font-size: 0.9rem; color: var(--ink-2);
+  display: flex; align-items: flex-start; gap: 9px;
+}
+.tarif-fonctionnalites li::before {
+  content: "✓"; color: var(--accent); font-weight: 700; flex-shrink: 0;
+}
+
+.tarif-cta {
+  width: 100%; justify-content: center; text-align: center;
+  border: none; cursor: pointer; font-family: inherit;
+}
+.tarif-cta:disabled { opacity: 0.65; cursor: default; }
+
+.tarif-statut-actuel {
+  text-align: center; font-size: 0.82rem; font-weight: 600;
+  color: var(--accent); margin-top: 12px;
+}
+
+.tarif-note {
+  max-width: 640px; margin: 30px auto 0; text-align: center;
+  font-size: 0.86rem; color: var(--ink-3); line-height: 1.6;
+}
+
+.tarif-message {
+  max-width: 480px; margin: 18px auto 0; text-align: center;
+  font-size: 0.9rem; color: var(--danger); font-weight: 500;
+}
+
+@media (max-width: 900px) {
+  .grille-tarifs { grid-template-columns: 1fr; max-width: 420px; }
+  .carte-tarif.recommandee { order: -1; }
+}
+
+/* ------------------------------------------------------------------ */
+/* 12b. ABONNEMENT (page Paramètres)                                    */
+/* ------------------------------------------------------------------ */
+.usage-barre-fond {
+  width: 100%; height: 10px; border-radius: 999px;
+  background: #f0f0f2; overflow: hidden; margin: 18px 0 8px;
+}
+.usage-barre-remplissage {
+  height: 100%; border-radius: 999px; background: var(--grad);
+  width: 0%; transition: width 0.4s var(--ease);
+}
+.usage-detail { font-size: 0.85rem; color: var(--ink-3); margin-bottom: 20px; }
+
+.abonnement-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }

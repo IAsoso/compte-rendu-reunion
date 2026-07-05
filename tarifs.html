@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Synthia — Tarifs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script>document.documentElement.classList.add("js");</script>
+  <script src="config.js"></script>
+  <script src="auth.js"></script>
+</head>
+<body class="page-landing page-tarifs">
+  <header>
+    <a href="index.html" class="logo-lien">
+      <div class="logo">S</div>
+      <div>
+        <h1>Synthia</h1>
+        <div class="tagline">Vos réunions, résumées par l'IA</div>
+      </div>
+    </a>
+    <nav class="nav-liens" id="navLiens">
+      <a href="tarifs.html" class="lien-retour">Tarifs</a>
+      <a href="index.html" class="lien-retour">Accueil</a>
+      <!-- Complété en JS selon l'état de connexion -->
+    </nav>
+  </header>
+
+  <main>
+    <section class="hero hero-tarifs">
+      <span class="eyebrow rise">💳 Tarifs</span>
+      <h2 class="hero-titre rise d1">Un prix simple,<br>selon <span class="grad-text">votre usage.</span></h2>
+      <p class="hero-pitch rise d2">
+        Toutes les offres incluent la transcription, la rédaction du compte-rendu, l'extraction des
+        actions et l'assistant IA. La seule différence : le nombre de minutes de réunion traitées chaque mois.
+      </p>
+    </section>
+
+    <section class="section-tarifs">
+      <div class="conteneur">
+        <div class="grille-tarifs reveal">
+
+          <!-- Gratuit -->
+          <article class="carte-tarif" data-plan="gratuit">
+            <div class="tarif-nom">Gratuit</div>
+            <div class="tarif-prix">0 € <span>/ mois</span></div>
+            <p class="tarif-quota">120 minutes de réunion par mois</p>
+            <ul class="tarif-fonctionnalites">
+              <li>Transcription + compte-rendu IA</li>
+              <li>Extraction automatique des actions</li>
+              <li>Export texte et PDF</li>
+              <li>Historique illimité</li>
+            </ul>
+            <a href="inscription.html" class="btn-premium tarif-cta" id="ctaGratuit">Commencer gratuitement</a>
+            <p class="tarif-statut-actuel cache" id="statutGratuit">✓ Votre offre actuelle</p>
+          </article>
+
+          <!-- Pro (mis en avant) -->
+          <article class="carte-tarif recommandee" data-plan="pro">
+            <span class="badge-recommande">Le plus populaire</span>
+            <div class="tarif-nom">Pro</div>
+            <div class="tarif-prix">15 € <span>/ mois</span></div>
+            <p class="tarif-quota">1 200 minutes par mois (~20h de réunion)</p>
+            <ul class="tarif-fonctionnalites">
+              <li>Tout ce qui est inclus dans Gratuit</li>
+              <li>Assistant IA d'édition en chat</li>
+              <li>Réunions longues (découpage automatique)</li>
+              <li>Support par email</li>
+            </ul>
+            <button class="btn-premium btn-primary tarif-cta" id="ctaPro" data-plan-cible="pro">Choisir Pro</button>
+            <p class="tarif-statut-actuel cache" id="statutPro">✓ Votre offre actuelle</p>
+          </article>
+
+          <!-- Business -->
+          <article class="carte-tarif" data-plan="business">
+            <div class="tarif-nom">Business</div>
+            <div class="tarif-prix">29 € <span>/ mois</span></div>
+            <p class="tarif-quota">3 000 minutes par mois (~50h de réunion)</p>
+            <ul class="tarif-fonctionnalites">
+              <li>Tout ce qui est inclus dans Pro</li>
+              <li>Volume conçu pour un usage professionnel intensif</li>
+              <li>Support prioritaire</li>
+            </ul>
+            <button class="btn-premium btn-primary tarif-cta" id="ctaBusiness" data-plan-cible="business">Choisir Business</button>
+            <p class="tarif-statut-actuel cache" id="statutBusiness">✓ Votre offre actuelle</p>
+          </article>
+
+        </div>
+
+        <p class="tarif-note reveal">
+          Le quota se renouvelle chaque mois civil. Au-delà, la création de nouveaux comptes-rendus est
+          bloquée jusqu'au mois suivant ou jusqu'à un changement d'offre — vos comptes-rendus déjà générés
+          restent bien sûr accessibles.
+        </p>
+        <p class="tarif-message cache" id="tarifMessage"></p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="pied">
+    <p>Synthia — Comptes-rendus de réunion par IA · Propulsé par Whisper &amp; Gemini</p>
+    <p class="pied-liens">
+      <a href="mentions-legales.html">Mentions légales</a> ·
+      <a href="cgu.html">CGU</a> ·
+      <a href="confidentialite.html">Confidentialité</a>
+    </p>
+  </footer>
+
+  <script>
+    // ---- Nav : liens différents selon l'état de connexion ----
+    const navLiens = document.getElementById("navLiens");
+    const connecte = !!getToken();
+    if (connecte) {
+      navLiens.insertAdjacentHTML(
+        "beforeend",
+        '<a href="app.html" class="lien-retour">Ouvrir l\'app →</a>' +
+        '<a href="parametres.html" class="lien-retour">Mon compte</a>'
+      );
+    } else {
+      navLiens.insertAdjacentHTML("beforeend", '<a href="connexion.html" class="lien-retour">Se connecter</a>');
+    }
+
+    const message = document.getElementById("tarifMessage");
+
+    function afficherMessage(texte) {
+      message.textContent = texte;
+      message.classList.remove("cache");
+    }
+
+    // ---- Si connecté : on récupère le plan actuel pour l'indiquer sur la bonne carte ----
+    async function chargerStatut() {
+      if (!connecte) return;
+      try {
+        const reponse = await fetchAuth(API_BASE_URL + "/abonnement/statut");
+        if (!reponse.ok) return;
+        const statut = await reponse.json();
+        const idParPlan = { gratuit: "statutGratuit", pro: "statutPro", business: "statutBusiness" };
+        const idCible = idParPlan[statut.plan];
+        if (idCible) document.getElementById(idCible).classList.remove("cache");
+
+        // Sur la carte de l'offre déjà active, on remplace le bouton par une mention.
+        document.querySelectorAll(".carte-tarif").forEach((carte) => {
+          if (carte.dataset.plan === statut.plan) {
+            const bouton = carte.querySelector(".tarif-cta");
+            if (bouton && bouton.tagName === "BUTTON") {
+              bouton.disabled = true;
+              bouton.textContent = "Offre actuelle";
+            }
+          }
+        });
+      } catch (erreur) {
+        // Échec silencieux : la page reste utilisable sans le badge de statut.
+      }
+    }
+    chargerStatut();
+
+    // ---- Souscription à une offre payante ----
+    async function souscrire(plan, bouton) {
+      if (!connecte) {
+        window.location.href = "connexion.html";
+        return;
+      }
+      const texteInitial = bouton.textContent;
+      bouton.disabled = true;
+      bouton.textContent = "Redirection…";
+      try {
+        const reponse = await fetchAuth(API_BASE_URL + "/abonnement/creer-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ plan }),
+        });
+        const donnees = await reponse.json();
+        if (!reponse.ok) throw new Error(donnees.detail || "Impossible de démarrer le paiement.");
+        window.location.href = donnees.url;
+      } catch (erreur) {
+        afficherMessage(erreur.message || "Serveur injoignable.");
+        bouton.disabled = false;
+        bouton.textContent = texteInitial;
+      }
+    }
+
+    document.getElementById("ctaPro").addEventListener("click", (e) => souscrire("pro", e.currentTarget));
+    document.getElementById("ctaBusiness").addEventListener("click", (e) => souscrire("business", e.currentTarget));
+
+    // Le bouton "Gratuit" pointe déjà vers app.html si on est connecté.
+    if (connecte) document.getElementById("ctaGratuit").setAttribute("href", "app.html");
+
+    // ---- Retour depuis Stripe (annulation) ----
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("abonnement") === "annule") {
+      afficherMessage("Paiement annulé — vous pouvez réessayer quand vous voulez.");
+    }
+
+    // Révélation au scroll (décoratif, comme sur les autres pages)
+    const observateur = new IntersectionObserver((entrees) => {
+      entrees.forEach((e) => {
+        if (e.isIntersecting) {
+          e.target.classList.add("visible");
+          observateur.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.1 });
+    document.querySelectorAll(".reveal").forEach((el) => observateur.observe(el));
+  </script>
+</body>
+</html>

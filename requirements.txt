@@ -29,3 +29,6 @@ imageio-ffmpeg==0.6.0        # binaire FFmpeg embarqué (pas d'install système 
 
 # --- Configuration ---
 python-dotenv==1.2.2         # lecture du fichier .env (clés d'API)
+
+# --- Paiement (abonnements) ---
+stripe==15.3.0                # Checkout, Customer Portal, webhooks

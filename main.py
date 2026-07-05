@@ -104,6 +104,59 @@ JWT_DUREE_JOURS = 7  # durée de validité d'un jeton avant reconnexion
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 
 
+# ----------------------------------------------------------------------
+#  Rate limiting (anti force brute / anti spam d'inscriptions)
+# ----------------------------------------------------------------------
+#  Compteurs en memoire avec fenetre glissante. Suffisant pour un service
+#  mono-process ; a remplacer par un stockage partage (Redis) si un jour
+#  le backend tourne sur plusieurs instances.
+#  - /connexion  : 5 echecs par (IP, email) -> verrouillage 15 min.
+#    Le compteur est remis a zero apres une connexion reussie.
+#  - /inscription : 5 comptes par IP par heure.
+_rl_verrou = threading.Lock()
+_rl_compteurs = {}  # cle -> liste d'horodatages (time.monotonic)
+
+CONNEXION_MAX_ECHECS = 5
+CONNEXION_FENETRE_S = 15 * 60
+INSCRIPTION_MAX = 5
+INSCRIPTION_FENETRE_S = 60 * 60
+
+
+def ip_client(requete: Request) -> str:
+    """IP du client. Derriere le proxy Render, la vraie IP est dans
+    X-Forwarded-For (pose par le proxy, fiable) ; en local, client.host."""
+    xff = requete.headers.get("x-forwarded-for", "")
+    if xff:
+        return xff.split(",")[0].strip()
+    return requete.client.host if requete.client else "inconnu"
+
+
+def _rl_purger(cle, fenetre_s):
+    """Retire les horodatages sortis de la fenetre. A appeler sous verrou."""
+    maintenant = time.monotonic()
+    _rl_compteurs[cle] = [t for t in _rl_compteurs.get(cle, []) if maintenant - t < fenetre_s]
+    return _rl_compteurs[cle]
+
+
+def rl_verifier(cle, maximum, fenetre_s, message):
+    """Leve 429 si la cle a deja atteint le maximum dans la fenetre."""
+    with _rl_verrou:
+        if len(_rl_purger(cle, fenetre_s)) >= maximum:
+            raise HTTPException(status_code=429, detail=message)
+
+
+def rl_enregistrer(cle):
+    """Ajoute une occurrence (echec de connexion, inscription...)."""
+    with _rl_verrou:
+        _rl_compteurs.setdefault(cle, []).append(time.monotonic())
+
+
+def rl_reinitialiser(cle):
+    """Efface le compteur (apres une connexion reussie)."""
+    with _rl_verrou:
+        _rl_compteurs.pop(cle, None)
+
+
 def hacher_mot_de_passe(mot_de_passe: str) -> str:
     """Renvoie le hash bcrypt (avec sel) d'un mot de passe en clair."""
     return contexte_mdp.hash(mot_de_passe)
@@ -145,10 +198,19 @@ def utilisateur_courant(authorization: str = Header(default="")) -> int:
 app = FastAPI()
 
 # Origines autorisées : configurables via FRONTEND_URL (une ou plusieurs URLs
-# séparées par des virgules). Si la variable est absente/vide, on retombe sur
-# "*" — pratique en développement local.
+# séparées par des virgules). Le repli sur "*" n'est toléré QU'EN LOCAL :
+# en production (Render pose la variable d'environnement RENDER), démarrer
+# sans FRONTEND_URL est une erreur de configuration — on refuse de démarrer
+# plutôt que d'ouvrir silencieusement le CORS à tous les domaines.
 origines_env = os.getenv("FRONTEND_URL", "")
-origines_autorisees = [o.strip() for o in origines_env.split(",") if o.strip()] or ["*"]
+origines_autorisees = [o.strip() for o in origines_env.split(",") if o.strip()]
+if not origines_autorisees:
+    if os.getenv("RENDER"):
+        raise RuntimeError(
+            "FRONTEND_URL manquante en production : configurez-la sur Render "
+            "(ex. https://synthia-hvl1.onrender.com) — pas de repli CORS '*'."
+        )
+    origines_autorisees = ["*"]  # développement local uniquement
 
 app.add_middleware(
     CORSMiddleware,
@@ -156,6 +218,21 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# --- Headers de sécurité HTTP sur toutes les réponses de l'API ---
+@app.middleware("http")
+async def headers_securite(requete: Request, appel_suivant):
+    reponse = await appel_suivant(requete)
+    # L'API ne sert que du JSON : CSP minimale (rien à charger), pas de
+    # framing, pas de sniffing MIME, pas de fuite de referer.
+    reponse.headers["X-Content-Type-Options"] = "nosniff"
+    reponse.headers["X-Frame-Options"] = "DENY"
+    reponse.headers["Referrer-Policy"] = "no-referrer"
+    reponse.headers["Content-Security-Policy"] = "default-src 'none'; frame-ancestors 'none'"
+    if os.getenv("RENDER"):  # HSTS seulement en production (HTTPS)
+        reponse.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return reponse
 
 # --- Transcription déportée sur l'API Groq (plus de modèle local) ---
 print("Backend prêt — transcription via l'API Groq.")
@@ -908,10 +985,17 @@ class IdentifiantsInscription(IdentifiantsAuth):
 
 
 @app.post("/inscription")
-def inscription(identifiants: IdentifiantsInscription):
+def inscription(identifiants: IdentifiantsInscription, requete: Request):
     """Crée un compte : hache le mot de passe, enregistre l'utilisateur,
     renvoie un JWT. Refuse si l'email est déjà pris ou si les CGU ne sont pas
     acceptées (contrôle serveur, indépendant du JavaScript du formulaire)."""
+    # Anti-spam : limite le nombre de comptes créés depuis une même IP.
+    cle_ip = f"inscription:{ip_client(requete)}"
+    rl_verifier(
+        cle_ip, INSCRIPTION_MAX, INSCRIPTION_FENETRE_S,
+        "Trop de comptes créés récemment depuis cette adresse. Réessayez plus tard.",
+    )
+
     if not identifiants.cgu_acceptees:
         raise HTTPException(
             status_code=400,
@@ -933,13 +1017,24 @@ def inscription(identifiants: IdentifiantsInscription):
         # Contrainte UNIQUE sur email : compte déjà existant.
         raise HTTPException(status_code=409, detail="Un compte existe déjà avec cet email.")
 
+    rl_enregistrer(cle_ip)  # compte créé : on l'ajoute au compteur anti-spam
     return {"token": creer_token(user_id), "email": email}
 
 
 @app.post("/connexion")
-def connexion(identifiants: IdentifiantsAuth):
+def connexion(identifiants: IdentifiantsAuth, requete: Request):
     """Vérifie l'email + le mot de passe et renvoie un JWT si valides."""
     email = identifiants.email.lower().strip()
+
+    # Anti force brute : après N échecs pour ce couple (IP, email), on
+    # verrouille temporairement — AVANT de vérifier le mot de passe, pour
+    # que le verrou ne soit pas contournable.
+    cle_bf = f"connexion:{ip_client(requete)}:{email}"
+    rl_verifier(
+        cle_bf, CONNEXION_MAX_ECHECS, CONNEXION_FENETRE_S,
+        "Trop de tentatives échouées. Réessayez dans une quinzaine de minutes.",
+    )
+
     utilisateur = get_utilisateur_par_email(email)
 
     # Message identique que l'email existe ou non : on ne révèle pas quels
@@ -947,8 +1042,10 @@ def connexion(identifiants: IdentifiantsAuth):
     if utilisateur is None or not verifier_mot_de_passe(
         identifiants.mot_de_passe, utilisateur["mot_de_passe_hash"]
     ):
+        rl_enregistrer(cle_bf)  # on ne compte que les ÉCHECS
         raise HTTPException(status_code=401, detail="Email ou mot de passe incorrect.")
 
+    rl_reinitialiser(cle_bf)  # connexion réussie : compteur remis à zéro
     return {"token": creer_token(utilisateur["id"]), "email": email}
 
 

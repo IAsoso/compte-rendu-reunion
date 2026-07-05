@@ -11,22 +11,10 @@
   <script>document.documentElement.classList.add("js");</script>
   <script src="config.js"></script>
   <script src="auth.js"></script>
+  <script src="nav.js" defer></script>
 </head>
 <body class="page-landing page-tarifs">
-  <header>
-    <a href="index.html" class="logo-lien">
-      <div class="logo">S</div>
-      <div>
-        <h1>Synthia</h1>
-        <div class="tagline">Vos réunions, résumées par l'IA</div>
-      </div>
-    </a>
-    <nav class="nav-liens" id="navLiens">
-      <a href="tarifs.html" class="lien-retour">Tarifs</a>
-      <a href="index.html" class="lien-retour">Accueil</a>
-      <!-- Complété en JS selon l'état de connexion -->
-    </nav>
-  </header>
+  <header data-nav></header>
 
   <main>
     <section class="hero hero-tarifs">
@@ -99,28 +87,11 @@
     </section>
   </main>
 
-  <footer class="pied">
-    <p>Synthia — Comptes-rendus de réunion par IA · Propulsé par Whisper &amp; Gemini</p>
-    <p class="pied-liens">
-      <a href="mentions-legales.html">Mentions légales</a> ·
-      <a href="cgu.html">CGU</a> ·
-      <a href="confidentialite.html">Confidentialité</a>
-    </p>
-  </footer>
+  <footer class="pied" data-pied></footer>
 
   <script>
-    // ---- Nav : liens différents selon l'état de connexion ----
-    const navLiens = document.getElementById("navLiens");
+    // La navigation est gérée par le composant partagé nav.js.
     const connecte = !!getToken();
-    if (connecte) {
-      navLiens.insertAdjacentHTML(
-        "beforeend",
-        '<a href="app.html" class="lien-retour">Ouvrir l\'app →</a>' +
-        '<a href="parametres.html" class="lien-retour">Mon compte</a>'
-      );
-    } else {
-      navLiens.insertAdjacentHTML("beforeend", '<a href="connexion.html" class="lien-retour">Se connecter</a>');
-    }
 
     const message = document.getElementById("tarifMessage");
 

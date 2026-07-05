@@ -8,20 +8,11 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
+  <script src="config.js"></script>
+  <script src="nav.js" defer></script>
 </head>
 <body>
-  <header>
-    <a href="index.html" class="logo-lien">
-      <div class="logo">S</div>
-      <div>
-        <h1>Synthia</h1>
-        <div class="tagline">Vos réunions, résumées par l'IA</div>
-      </div>
-    </a>
-    <nav class="nav-liens">
-      <a href="index.html" class="lien-retour">← Accueil</a>
-    </nav>
-  </header>
+  <header data-nav></header>
 
   <main class="conteneur legal-main">
     <article class="carte-auth carte-legal rise">
@@ -121,13 +112,6 @@
     </article>
   </main>
 
-  <footer class="pied">
-    <p>Synthia — Comptes-rendus de réunion par IA</p>
-    <p class="pied-liens">
-      <a href="mentions-legales.html">Mentions légales</a> ·
-      <a href="cgu.html">CGU</a> ·
-      <a href="confidentialite.html">Confidentialité</a>
-    </p>
-  </footer>
+  <footer class="pied" data-pied></footer>
 </body>
 </html>

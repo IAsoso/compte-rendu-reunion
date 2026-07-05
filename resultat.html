@@ -15,24 +15,10 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
+  <script src="nav.js" defer></script>
 </head>
 <body class="page-resultat">
-  <header>
-    <a href="index.html" class="logo-lien">
-      <div class="logo">S</div>
-      <div>
-        <h1>Synthia</h1>
-        <div class="tagline">Vos réunions, résumées par l'IA</div>
-      </div>
-    </a>
-    <nav class="nav-liens">
-      <a href="historique.html" class="lien-retour">Historique</a>
-      <a href="app.html" class="lien-retour">← Nouvelle réunion</a>
-      <a href="parametres.html" class="lien-retour">Paramètres</a>
-      <a href="tarifs.html" class="lien-retour">Tarifs</a>
-      <a href="#" class="lien-retour" onclick="deconnexion(); return false;">Se déconnecter</a>
-    </nav>
-  </header>
+  <header data-nav></header>
 
   <main class="doc">
     <!-- État vide : aucune donnée en session -->
@@ -430,13 +416,6 @@
       }
     });
   </script>
-  <footer class="pied">
-    <p>Synthia — Comptes-rendus de réunion par IA</p>
-    <p class="pied-liens">
-      <a href="mentions-legales.html">Mentions légales</a> ·
-      <a href="cgu.html">CGU</a> ·
-      <a href="confidentialite.html">Confidentialité</a>
-    </p>
-  </footer>
+  <footer class="pied" data-pied></footer>
 </body>
 </html>

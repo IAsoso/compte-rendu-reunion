@@ -11,17 +11,21 @@
 //  Dépend de config.js (window.API_BASE_URL), à charger AVANT ce fichier.
 // ======================================================================
 const SYNTHIA_CLE_TOKEN = "synthia_token";
+const SYNTHIA_CLE_EMAIL = "synthia_email";
 
 function getToken() {
   return localStorage.getItem(SYNTHIA_CLE_TOKEN);
 }
 
-function setToken(token) {
+function setToken(token, email) {
   localStorage.setItem(SYNTHIA_CLE_TOKEN, token);
+  if (email) localStorage.setItem(SYNTHIA_CLE_EMAIL, email); // pour le menu compte (nav.js)
 }
 
 function deconnexion() {
   localStorage.removeItem(SYNTHIA_CLE_TOKEN);
+  localStorage.removeItem(SYNTHIA_CLE_EMAIL);
+  sessionStorage.clear();
   window.location.href = "connexion.html";
 }
 
@@ -70,7 +74,7 @@ async function gererReponseGoogle(reponse) {
     });
     const donnees = await r.json();
     if (!r.ok) throw new Error(donnees.detail || "Connexion Google impossible.");
-    setToken(donnees.token);
+    setToken(donnees.token, donnees.email);
     window.location.href = "app.html";
   } catch (erreur) {
     if (message) {

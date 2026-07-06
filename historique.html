@@ -24,11 +24,31 @@
     </div>
 
     <!-- Recherche -->
-    <input type="search" id="recherche" class="histo-recherche"
+    <input type="search" id="recherche" class="histo-recherche" aria-label="Rechercher un compte-rendu"
            placeholder="🔍 Rechercher (type, date, contenu)…" autocomplete="off">
+
+    <!-- Filtres avancés -->
+    <div class="histo-filtres">
+      <select id="filtreType" aria-label="Filtrer par type de réunion">
+        <option value="">Tous les types</option>
+        <option value="réunion d'équipe">Réunion d'équipe</option>
+        <option value="réunion client">Réunion client</option>
+        <option value="réunion de projet">Réunion de projet</option>
+        <option value="point rapide">Point rapide</option>
+        <option value="réunion générale">Autre / Générale</option>
+      </select>
+      <label class="histo-filtre-date">Du <input type="date" id="filtreDu" aria-label="Date de début"></label>
+      <label class="histo-filtre-date">Au <input type="date" id="filtreAu" aria-label="Date de fin"></label>
+      <button type="button" id="filtreReset" class="btn-premium cache">Effacer les filtres</button>
+    </div>
 
     <!-- Liste -->
     <div id="liste" class="histo-liste"></div>
+
+    <!-- Pagination : au-delà de 50 entrées -->
+    <div class="histo-charger-plus cache" id="blocChargerPlus">
+      <button type="button" class="btn-premium" id="btnChargerPlus">Afficher plus de comptes-rendus</button>
+    </div>
 
     <!-- État vide -->
     <div id="etatVide" class="etat-vide cache">
@@ -42,7 +62,7 @@
     <div id="etatErreur" class="etat-vide cache">
       <div class="etat-vide-icone">⚠️</div>
       <h2>Impossible de charger l'historique</h2>
-      <p>Vérifiez que le serveur est bien lancé, puis réessayez.</p>
+      <p>Vérifiez votre connexion internet, puis actualisez la page.</p>
     </div>
   </main>
 
@@ -77,49 +97,84 @@
     }
 
     const recherche = document.getElementById("recherche");
+    const filtreType = document.getElementById("filtreType");
+    const filtreDu = document.getElementById("filtreDu");
+    const filtreAu = document.getElementById("filtreAu");
+    const filtreReset = document.getElementById("filtreReset");
+    const blocChargerPlus = document.getElementById("blocChargerPlus");
+    const btnChargerPlus = document.getElementById("btnChargerPlus");
+
+    // Pagination côté client : on affiche par tranches de 50.
+    const PAGE_TAILLE = 50;
+    let comptesCharges = [];   // résultats complets de la dernière requête
+    let nbAffiches = 0;
 
     // Jeton de séquence : seule la requête la plus récente met à jour l'affichage
     // (évite qu'un chargement lent antérieur n'écrase un résultat plus récent).
     let sequenceRecherche = 0;
 
-    // Chargement de la liste (avec filtre de recherche optionnel)
-    async function chargerHistorique(q = "") {
+    function filtresActifs() {
+      return !!(recherche.value.trim() || filtreType.value || filtreDu.value || filtreAu.value);
+    }
+
+    function afficherTranche() {
+      const tranche = comptesCharges.slice(nbAffiches, nbAffiches + PAGE_TAILLE);
+      tranche.forEach((cr) => {
+        const item = document.createElement("button");
+        item.className = "histo-item";
+        item.innerHTML = `
+          <span class="histo-icone">📄</span>
+          <span class="histo-infos">
+            <span class="histo-type">${echap(capitaliser(cr.type_reunion))}</span>
+            <span class="histo-date">${echap(formaterDate(cr.date_creation))}${cr.format ? "  ·  " + echap(cr.format) : ""}</span>
+          </span>
+          <span class="histo-fleche" aria-hidden="true">→</span>
+        `;
+        item.onclick = () => ouvrirCompteRendu(cr.id);
+        liste.appendChild(item);
+      });
+      nbAffiches += tranche.length;
+      blocChargerPlus.classList.toggle("cache", nbAffiches >= comptesCharges.length);
+    }
+
+    btnChargerPlus.onclick = afficherTranche;
+
+    // Chargement de la liste (recherche + filtres avancés)
+    async function chargerHistorique() {
       const monTour = ++sequenceRecherche;
       // On repart d'un état propre à chaque appel (recherche relancée).
       liste.innerHTML = "";
+      nbAffiches = 0;
       etatVide.classList.add("cache");
       etatErreur.classList.add("cache");
+      blocChargerPlus.classList.add("cache");
+      filtreReset.classList.toggle("cache", !filtresActifs());
       try {
-        const url = API + "/historique" + (q ? "?q=" + encodeURIComponent(q) : "");
-        const reponse = await fetchAuth(url);
+        const params = new URLSearchParams();
+        const q = recherche.value.trim();
+        if (q) params.set("q", q);
+        if (filtreType.value) params.set("type", filtreType.value);
+        if (filtreDu.value) params.set("du", filtreDu.value);
+        if (filtreAu.value) params.set("au", filtreAu.value);
+        const suffixe = params.toString() ? "?" + params.toString() : "";
+
+        const reponse = await fetchAuth(API + "/historique" + suffixe);
         const comptes = await reponse.json();
         if (monTour !== sequenceRecherche) return;  // une recherche plus récente a pris le relais
 
         if (!Array.isArray(comptes) || comptes.length === 0) {
-          // Aucun résultat : message contextuel selon qu'on recherche ou non.
-          sousTitre.textContent = q ? `Aucun résultat pour « ${q} »` : "";
-          if (!q) etatVide.classList.remove("cache");
+          // Aucun résultat : message contextuel selon qu'on filtre ou non.
+          sousTitre.textContent = filtresActifs() ? "Aucun résultat avec ces critères" : "";
+          if (!filtresActifs()) etatVide.classList.remove("cache");
           return;
         }
 
         sousTitre.textContent =
           comptes.length + (comptes.length > 1 ? " comptes-rendus" : " compte-rendu") +
-          (q ? " trouvé" + (comptes.length > 1 ? "s" : "") : " enregistré" + (comptes.length > 1 ? "s" : ""));
+          (filtresActifs() ? " trouvé" + (comptes.length > 1 ? "s" : "") : " enregistré" + (comptes.length > 1 ? "s" : ""));
 
-        comptes.forEach((cr) => {
-          const item = document.createElement("button");
-          item.className = "histo-item";
-          item.innerHTML = `
-            <span class="histo-icone">📄</span>
-            <span class="histo-infos">
-              <span class="histo-type">${echap(capitaliser(cr.type_reunion))}</span>
-              <span class="histo-date">${echap(formaterDate(cr.date_creation))}${cr.format ? "  ·  " + echap(cr.format) : ""}</span>
-            </span>
-            <span class="histo-fleche" aria-hidden="true">→</span>
-          `;
-          item.onclick = () => ouvrirCompteRendu(cr.id);
-          liste.appendChild(item);
-        });
+        comptesCharges = comptes;
+        afficherTranche();
       } catch (erreur) {
         if (monTour !== sequenceRecherche) return;  // réponse obsolète, on ignore
         sousTitre.textContent = "";
@@ -127,6 +182,18 @@
         console.error(erreur);
       }
     }
+
+    // Filtres avancés : rechargement immédiat au changement
+    [filtreType, filtreDu, filtreAu].forEach((el) =>
+      el.addEventListener("change", () => chargerHistorique())
+    );
+    filtreReset.onclick = () => {
+      recherche.value = "";
+      filtreType.value = "";
+      filtreDu.value = "";
+      filtreAu.value = "";
+      chargerHistorique();
+    };
 
     // Ouverture d'un compte-rendu : on le recharge puis on redirige vers resultat.html
     async function ouvrirCompteRendu(id) {
@@ -156,7 +223,7 @@
     let minuteur = null;
     recherche.addEventListener("input", () => {
       clearTimeout(minuteur);
-      minuteur = setTimeout(() => chargerHistorique(recherche.value.trim()), 300);
+      minuteur = setTimeout(() => chargerHistorique(), 300);
     });
 
     chargerHistorique();

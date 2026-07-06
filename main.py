@@ -181,6 +181,8 @@ JETON_VERIF_DUREE_MIN = 24 * 60     # lien de vérification : 24 h
 
 import hashlib
 import httpx
+import re
+import html as html_lib
 
 
 def envoyer_email(destinataire, sujet, html):
@@ -715,10 +717,11 @@ def enregistrer_compte_rendu(user_id, type_reunion, format_souhaite, transcripti
     return nouvel_id
 
 
-def lister_comptes_rendus(user_id, recherche=None):
+def lister_comptes_rendus(user_id, recherche=None, type_reunion=None, date_du=None, date_au=None):
     """Renvoie l'essentiel des comptes-rendus DE CET UTILISATEUR, du + récent au
-    + ancien. Si `recherche` est fourni, filtre sur le type, la date, le
-    compte-rendu et la transcription (sans jamais sortir des CR de l'utilisateur)."""
+    + ancien. Filtres optionnels : mot-clé (`recherche` : type, date, contenu),
+    type de réunion exact, plage de dates (bornes AAAA-MM-JJ incluses).
+    L'isolation par user_id est toujours appliquée en premier."""
     conn = sqlite3.connect(CHEMIN_DB)
     conn.row_factory = sqlite3.Row  # accès par nom de colonne
     sql = "SELECT id, date_creation, type_reunion, format FROM comptes_rendus WHERE user_id = ?"
@@ -730,6 +733,15 @@ def lister_comptes_rendus(user_id, recherche=None):
             "OR compte_rendu LIKE ? OR transcription LIKE ?)"
         )
         params += [motif, motif, motif, motif]
+    if type_reunion:
+        sql += " AND type_reunion = ?"
+        params.append(type_reunion)
+    if date_du:
+        sql += " AND date_creation >= ?"
+        params.append(date_du)          # ISO : "2026-07-01" <= "2026-07-01T09:00"
+    if date_au:
+        sql += " AND date_creation <= ?"
+        params.append(date_au + "T23:59:59")  # borne de fin incluse
     sql += " ORDER BY id DESC"
     lignes = conn.execute(sql, params).fetchall()
     conn.close()
@@ -944,15 +956,20 @@ Notes des différentes parties :
     return reponse.text
 
 
-def transcrire_audio_groq(chemin_audio):
+def transcrire_audio_groq(chemin_audio, langue=None):
     """Transcrit un fichier audio via l'API Groq (Whisper large v3 turbo).
-    Lève une RuntimeError avec un message clair en cas d'échec."""
+    Sans `langue`, Whisper détecte la langue automatiquement ; un code
+    ISO-639-1 ("fr", "en"…) force la langue. Lève une RuntimeError avec un
+    message clair en cas d'échec."""
     try:
+        parametres = {}
+        if langue:
+            parametres["language"] = langue
         with open(chemin_audio, "rb") as fichier:
             transcription = client_groq.audio.transcriptions.create(
                 file=(os.path.basename(chemin_audio), fichier.read()),
                 model=MODELE_TRANSCRIPTION,
-                language="fr",
+                **parametres,
             )
         return transcription.text
     except groq.AuthenticationError:
@@ -967,18 +984,18 @@ def transcrire_audio_groq(chemin_audio):
         raise RuntimeError(f"Échec de la transcription Groq : {erreur}")
 
 
-def traiter_audio_complet(chemin_audio, type_reunion, format_souhaite, maj_progression, user_id):
+def traiter_audio_complet(chemin_audio, type_reunion, format_souhaite, maj_progression, user_id, langue=None):
     """Traite un audio de bout en bout. Aiguille vers le flux court (existant) ou
     le flux long (découpage + map-reduce). `maj_progression(phase, courant, total, message)`
     est appelé régulièrement pour suivre l'avancement. Le compte-rendu produit est
-    rattaché à `user_id`."""
+    rattaché à `user_id`. `langue` vide = détection automatique par Whisper."""
     audio = AudioSegment.from_file(chemin_audio)
     duree = len(audio)
 
     # ---------- Audio COURT : flux existant, inchangé ----------
     if duree <= DUREE_TRANCHE_MS:
         maj_progression("transcription", 0, 1, "Transcription en cours…")
-        texte_brut = transcrire_audio_groq(chemin_audio)
+        texte_brut = transcrire_audio_groq(chemin_audio, langue)
 
         maj_progression("redaction", 0, 1, "Rédaction du compte-rendu…")
         texte_propre = nettoyer_transcription(texte_brut)
@@ -1006,7 +1023,7 @@ def traiter_audio_complet(chemin_audio, type_reunion, format_souhaite, maj_progr
     try:
         for i, chemin_morceau in enumerate(morceaux):
             maj_progression("transcription", i, total, f"Transcription {i + 1}/{total}…")
-            transcriptions.append(transcrire_audio_groq(chemin_morceau).strip())
+            transcriptions.append(transcrire_audio_groq(chemin_morceau, langue).strip())
         maj_progression("transcription", total, total, "Transcription terminée")
     finally:
         for chemin_morceau in morceaux:
@@ -1038,13 +1055,25 @@ def traiter_audio_complet(chemin_audio, type_reunion, format_souhaite, maj_progr
     }
 
 
+# Langues proposées pour forcer la transcription (vide = détection auto).
+LANGUES_TRANSCRIPTION = {"fr", "en", "es", "de", "it", "pt", "nl", "ar", "ja", "zh"}
+
+
+def valider_langue(langue: str) -> str:
+    """Renvoie le code langue nettoyé, ou "" pour la détection automatique."""
+    langue = (langue or "").strip().lower()
+    return langue if langue in LANGUES_TRANSCRIPTION else ""
+
+
 @app.post("/transcrire")
 async def transcrire(
     fichier: UploadFile = File(...),
     type_reunion: str = Form("réunion générale"),
     format: str = Form("concis"),
+    langue: str = Form(""),
     user_id: int = Depends(utilisateur_courant),
 ):
+    langue = valider_langue(langue)
     contenu = await fichier.read()
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as fichier_temp:
@@ -1061,7 +1090,7 @@ async def transcrire(
 
     try:
         resultat = traiter_audio_complet(
-            chemin_temp, type_reunion, format, sans_progression, user_id
+            chemin_temp, type_reunion, format, sans_progression, user_id, langue
         )
         enregistrer_usage(user_id, duree_min)
     except RuntimeError as erreur:
@@ -1539,8 +1568,10 @@ async def transcrire_async(
     fichier: UploadFile = File(...),
     type_reunion: str = Form("réunion générale"),
     format: str = Form("concis"),
+    langue: str = Form(""),
     user_id: int = Depends(utilisateur_courant),
 ):
+    langue = valider_langue(langue)
     # On enregistre le fichier tout de suite (on ne peut pas lire l'upload dans le thread)
     contenu = await fichier.read()
     with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as fichier_temp:
@@ -1573,7 +1604,7 @@ async def transcrire_async(
 
         try:
             resultat = traiter_audio_complet(
-                chemin_temp, type_reunion, format, maj_progression, user_id
+                chemin_temp, type_reunion, format, maj_progression, user_id, langue
             )
             enregistrer_usage(user_id, duree_min)
             travaux[job_id].update(
@@ -1582,6 +1613,22 @@ async def transcrire_async(
                 message="Compte-rendu prêt !",
                 resultat=resultat,
             )
+            # Notification par email pour les réunions LONGUES uniquement :
+            # l'utilisateur a pu quitter la page pendant le traitement. Pour
+            # une réunion courte (< 1 tranche), il est encore devant l'écran.
+            if duree_min * 60 * 1000 > DUREE_TRANCHE_MS:
+                try:
+                    email_dest, _ = get_infos_facturation(user_id)
+                    lien = f"{URL_FRONTEND}/resultat.html?id={resultat['id']}"
+                    envoyer_email(
+                        email_dest,
+                        "Votre compte-rendu est prêt — Synthia",
+                        f"<p>Bonne nouvelle : le compte-rendu de votre réunion "
+                        f"({type_reunion}) est prêt.</p>"
+                        f"<p><a href=\"{lien}\">Ouvrir le compte-rendu</a></p>",
+                    )
+                except Exception as erreur_mail:
+                    print("Notification de fin non envoyée :", erreur_mail)
         except Exception as erreur:
             travaux[job_id].update(statut="erreur", erreur=str(erreur))
             print("Erreur de traitement :", erreur)
@@ -1626,10 +1673,25 @@ def progression(job_id: str, user_id: int = Depends(utilisateur_courant)):
 # ======================================================================
 
 @app.get("/historique")
-def historique(q: str = "", user_id: int = Depends(utilisateur_courant)):
+def historique(
+    q: str = "",
+    type: str = "",
+    du: str = "",
+    au: str = "",
+    user_id: int = Depends(utilisateur_courant),
+):
     """Liste les comptes-rendus de l'utilisateur connecté (id, date, type, format).
-    Paramètre optionnel `q` : filtre par mot-clé (type, date, contenu)."""
-    return lister_comptes_rendus(user_id, q.strip() or None)
+    Filtres optionnels : `q` (mot-clé), `type` (type de réunion exact),
+    `du`/`au` (plage de dates AAAA-MM-JJ, bornes incluses)."""
+    type_filtre = type.strip() if type.strip() in TYPES_REUNION else None
+    motif_date = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+    return lister_comptes_rendus(
+        user_id,
+        q.strip() or None,
+        type_filtre,
+        du if motif_date.match(du or "") else None,
+        au if motif_date.match(au or "") else None,
+    )
 
 
 @app.get("/compte-rendu/{cr_id}")
@@ -1639,6 +1701,60 @@ def compte_rendu_par_id(cr_id: int, user_id: int = Depends(utilisateur_courant))
     if compte_rendu is None:
         raise HTTPException(status_code=404, detail="Compte-rendu introuvable")
     return compte_rendu
+
+
+# ======================================================================
+#  ENVOI DU COMPTE-RENDU PAR EMAIL (à l'adresse du compte)
+# ======================================================================
+class DemandeEnvoiCR(BaseModel):
+    cr_id: int
+
+
+@app.post("/envoyer-compte-rendu")
+def envoyer_compte_rendu_email(
+    demande: DemandeEnvoiCR, user_id: int = Depends(utilisateur_courant)
+):
+    """Envoie le compte-rendu (texte + actions) par email à l'adresse du compte.
+    Isolation stricte : uniquement un CR appartenant à l'utilisateur connecté."""
+    if not RESEND_API_KEY:
+        raise HTTPException(status_code=503, detail="L'envoi d'email n'est pas encore configuré.")
+
+    # Anti-abus léger : 10 envois par heure et par utilisateur.
+    rl_verifier(f"emailcr:{user_id}", 10, 60 * 60,
+                "Trop d'envois récents. Réessayez dans une heure.")
+
+    cr = recuperer_compte_rendu(demande.cr_id, user_id)
+    if cr is None:
+        raise HTTPException(status_code=404, detail="Compte-rendu introuvable")
+
+    email_dest, _ = get_infos_facturation(user_id)
+
+    # Contenu ÉCHAPPÉ : le compte-rendu contient du texte issu de l'IA/de
+    # l'utilisateur, jamais inséré tel quel dans le HTML de l'email.
+    corps = html_lib.escape(cr.get("compte_rendu") or "").replace("\n", "<br>")
+    lignes_actions = "".join(
+        f"<tr><td>{html_lib.escape(a.get('tache',''))}</td>"
+        f"<td>{html_lib.escape(a.get('responsable',''))}</td>"
+        f"<td>{html_lib.escape(a.get('echeance',''))}</td></tr>"
+        for a in (cr.get("actions") or [])
+    )
+    tableau = (
+        "<h3>Actions</h3><table border='1' cellpadding='6' cellspacing='0'>"
+        "<tr><th>Tâche</th><th>Responsable</th><th>Échéance</th></tr>"
+        + lignes_actions + "</table>"
+    ) if lignes_actions else ""
+
+    try:
+        envoyer_email(
+            email_dest,
+            f"Compte-rendu — {cr.get('type_reunion') or 'réunion'} — Synthia",
+            f"<h2>Compte-rendu de réunion</h2><p>{corps}</p>{tableau}",
+        )
+    except RuntimeError as erreur:
+        raise HTTPException(status_code=502, detail=str(erreur))
+
+    rl_enregistrer(f"emailcr:{user_id}")
+    return {"message": f"Compte-rendu envoyé à {email_dest}."}
 
 
 # ======================================================================

@@ -64,6 +64,22 @@
             <option value="détaillé">Détaillé (complet)</option>
           </select>
         </div>
+        <div class="reglage">
+          <label for="langue">Langue de l'audio</label>
+          <select id="langue">
+            <option value="">Automatique (détection)</option>
+            <option value="fr">Français</option>
+            <option value="en">Anglais</option>
+            <option value="es">Espagnol</option>
+            <option value="de">Allemand</option>
+            <option value="it">Italien</option>
+            <option value="pt">Portugais</option>
+            <option value="nl">Néerlandais</option>
+            <option value="ar">Arabe</option>
+            <option value="ja">Japonais</option>
+            <option value="zh">Chinois</option>
+          </select>
+        </div>
       </div>
     </div>
   </main>
@@ -175,6 +191,8 @@
       donnees.append("fichier", blobAudio, "enregistrement.webm");
       donnees.append("type_reunion", typeReunion);
       donnees.append("format", format);
+      const langue = document.getElementById("langue").value;
+      if (langue) donnees.append("langue", langue);  // vide = détection auto
 
       try {
         // 1. On lance le traitement : le backend répond aussitôt avec un job_id
@@ -202,8 +220,27 @@
       }
     }
 
+    // ---- Estimation du temps restant, basée sur la vitesse observée ----
+    // On garde les premiers/derniers relevés (instant, %) et on extrapole.
+    let etaDebut = null;
+    function estimerRestant(pourcentage) {
+      const maintenant = Date.now();
+      if (etaDebut === null || pourcentage <= 0) {
+        etaDebut = { t: maintenant, p: pourcentage };
+        return "";
+      }
+      const progression = pourcentage - etaDebut.p;
+      if (progression < 3) return "";           // pas assez de recul pour estimer
+      const msParPoint = (maintenant - etaDebut.t) / progression;
+      const restantS = Math.round((100 - pourcentage) * msParPoint / 1000);
+      if (restantS < 10) return "quelques secondes restantes";
+      if (restantS < 90) return `~${Math.max(10, Math.round(restantS / 10) * 10)} s restantes`;
+      return `~${Math.round(restantS / 60)} min restantes`;
+    }
+
     // ---- Interrogation régulière de la progression (toutes les ~1 s) ----
     function suivreProgression(jobId, typeReunion, format) {
+      etaDebut = null;
       const sonder = async function () {
         try {
           const reponse = await fetchAuth(API_BASE_URL + "/progression/" + jobId);
@@ -213,6 +250,7 @@
             majBarre(100, p.message || "Compte-rendu prêt !");
             const r = p.resultat || {};
             const donneesResultat = {
+              id: r.id,   // permet l'envoi par email et le rechargement ?id=
               texte_brut: r.texte_brut || "",
               texte: r.texte || "",
               compte_rendu: r.compte_rendu || "",
@@ -244,7 +282,8 @@
     // ---- Mise à jour visuelle de la barre + du message ----
     function majBarre(pourcentage, message) {
       barreRemplissage.style.width = pourcentage + "%";
-      pourcentageTexte.textContent = pourcentage + " %";
+      const restant = pourcentage > 0 && pourcentage < 100 ? estimerRestant(pourcentage) : "";
+      pourcentageTexte.textContent = pourcentage + " %" + (restant ? "  ·  " + restant : "");
       texteChargement.textContent = message;
     }
 
@@ -252,7 +291,7 @@
       const estTexte = typeof erreur === "string";
       erreurChargement.textContent = estTexte
         ? "❌ " + erreur
-        : "❌ Une erreur est survenue. Vérifiez que le serveur est bien lancé.";
+        : "❌ Nous n'avons pas pu traiter votre réunion. Vérifiez votre connexion internet, puis réessayez.";
       erreurChargement.classList.remove("cache");
       console.error(erreur);
     }
@@ -266,20 +305,37 @@
     }
 
     // ================= États visuels =================
+    const TITRE_NORMAL = document.title;
+
     function passerEnEnregistrement() {
       etat = "recording";
       btnMicro.classList.add("enregistre");
       btnMicro.setAttribute("aria-label", "Arrêter l'enregistrement");
       etatLabel.textContent = "Enregistrement en cours";
-      sousTexte.textContent = "Cliquez à nouveau pour terminer";
+      sousTexte.textContent = "Cliquez à nouveau (ou appuyez sur Espace) pour terminer";
       reglages.classList.add("cache");
       waveform.classList.remove("cache");
       timerEl.classList.remove("cache");
+      // Indicateur dans l'onglet : on garde le fil même en changeant de fenêtre.
+      document.title = "🔴 Enregistrement — Synthia";
     }
 
     function passerEnChargement() {
+      etat = "processing";
       overlay.classList.remove("cache");
+      document.title = TITRE_NORMAL;
     }
+
+    // ---- Raccourci clavier : Espace démarre/arrête l'enregistrement ----
+    document.addEventListener("keydown", (e) => {
+      if (e.code !== "Space") return;
+      const cible = e.target;
+      // On n'intercepte pas la barre espace dans un champ de saisie.
+      if (cible.closest("input, select, textarea, [contenteditable]")) return;
+      if (etat !== "idle" && etat !== "recording") return;
+      e.preventDefault();
+      btnMicro.click();
+    });
 
     // ================= Waveform réactive =================
     function demarrerWaveform() {

@@ -38,7 +38,8 @@
           <p class="doc-meta" id="docMeta"></p>
         </div>
         <div class="doc-actions">
-          <button class="btn-premium btn-primary" id="btnEnregistrerModifs">💾 Enregistrer</button>
+          <button class="btn-premium btn-primary" id="btnEnregistrerModifs">💾 Sauvegarder les modifs</button>
+          <button class="btn-premium" id="btnEnvoyerEmail">✉️ Envoyer par email</button>
           <button class="btn-premium" id="btnCopier">Copier</button>
           <button class="btn-premium" id="btnTelechargerTxt">Texte</button>
           <button class="btn-premium" id="btnTelechargerPdf">PDF</button>
@@ -139,13 +140,13 @@
     const compteActions = document.getElementById("compteActions");
     const docMeta = document.getElementById("docMeta");
 
-    // --- 1. Chargement des données depuis sessionStorage ---
-    const data = JSON.parse(sessionStorage.getItem(CLE) || "null");
+    // --- 1. Chargement des données : sessionStorage, ou ?id=N (liens email) ---
+    let data = JSON.parse(sessionStorage.getItem(CLE) || "null");
+    const idDepuisUrl = new URLSearchParams(location.search).get("id");
 
-    if (!data) {
-      elemVide.classList.remove("cache");
-    } else {
+    function afficherDonnees() {
       elemContenu.classList.remove("cache");
+      elemVide.classList.add("cache");
 
       // Compte-rendu : HTML édité s'il existe, sinon parse du Markdown.
       // TOUJOURS assaini par DOMPurify : le contenu vient de l'IA (elle-même
@@ -163,6 +164,38 @@
 
       // Actions
       afficherActions(data.actions || []);
+
+      // Le chat n'a de sens que s'il existe un compte-rendu
+      document.getElementById("btnAssistant").classList.remove("cache");
+    }
+
+    if (data) {
+      afficherDonnees();
+    } else if (idDepuisUrl) {
+      // Arrivée via un lien email « Votre compte-rendu est prêt » : on
+      // recharge le compte-rendu depuis le serveur (isolation par le jeton).
+      (async () => {
+        try {
+          const reponse = await fetchAuth(API_BASE_URL + "/compte-rendu/" + encodeURIComponent(idDepuisUrl));
+          if (!reponse.ok) throw new Error();
+          const cr = await reponse.json();
+          data = {
+            id: cr.id,
+            texte: cr.transcription || "",
+            compte_rendu: cr.compte_rendu || "",
+            actions: cr.actions || [],
+            type_reunion: cr.type_reunion || "",
+            format: cr.format || "",
+            date: cr.date_creation || "",
+          };
+          sessionStorage.setItem(CLE, JSON.stringify(data));
+          afficherDonnees();
+        } catch (erreur) {
+          elemVide.classList.remove("cache");
+        }
+      })();
+    } else {
+      elemVide.classList.remove("cache");
     }
 
     // --- Méta du document ---
@@ -266,6 +299,30 @@
       afficherToast("✅ Modifications enregistrées");
     };
 
+    // --- 5 bis. Envoyer le compte-rendu par email ---
+    document.getElementById("btnEnvoyerEmail").onclick = async function () {
+      if (!data || !data.id) {
+        afficherToast("ℹ️ Ce compte-rendu n'est pas encore enregistré sur le serveur.");
+        return;
+      }
+      const bouton = this;
+      bouton.disabled = true;
+      try {
+        const reponse = await fetchAuth(API_BASE_URL + "/envoyer-compte-rendu", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cr_id: data.id }),
+        });
+        const d = await reponse.json();
+        if (!reponse.ok) throw new Error(typeof d.detail === "string" ? d.detail : "");
+        afficherToast("✉️ " + d.message);
+      } catch (erreur) {
+        afficherToast("❌ " + (erreur.message || "Envoi impossible pour le moment. Réessayez dans un instant."));
+      } finally {
+        bouton.disabled = false;
+      }
+    };
+
     // --- 6. Copier le compte-rendu ---
     document.getElementById("btnCopier").onclick = function () {
       navigator.clipboard.writeText(elemCompteRendu.innerText);
@@ -317,11 +374,7 @@
     const chatEnvoyer = document.getElementById("chatEnvoyer");
 
     let requeteEnCours = false;
-
-    // Le chat n'a de sens que s'il existe un compte-rendu
-    if (data) {
-      btnAssistant.classList.remove("cache");
-    }
+    // (L'affichage du bouton assistant est géré dans afficherDonnees().)
 
     // Ouverture / fermeture du panneau
     btnAssistant.onclick = function () {
@@ -343,9 +396,9 @@
       };
     });
 
-    // Entrée = envoyer, Maj+Entrée = nouvelle ligne
+    // Entrée ou Ctrl/Cmd+Entrée = envoyer, Maj+Entrée = nouvelle ligne
     chatInput.addEventListener("keydown", function (e) {
-      if (e.key === "Enter" && !e.shiftKey) {
+      if (e.key === "Enter" && (!e.shiftKey || e.ctrlKey || e.metaKey)) {
         e.preventDefault();
         chatForm.requestSubmit();
       }
@@ -405,7 +458,7 @@
 
         bulleIa.innerHTML = "✅ Compte-rendu mis à jour. Pensez à cliquer sur <strong>Enregistrer</strong> pour conserver ces changements.";
       } catch (erreur) {
-        bulleIa.innerHTML = "❌ Une erreur est survenue. Vérifiez que le serveur est bien lancé.";
+        bulleIa.innerHTML = "❌ La modification n'a pas pu être appliquée. Réessayez dans un instant.";
         console.error(erreur);
       } finally {
         requeteEnCours = false;

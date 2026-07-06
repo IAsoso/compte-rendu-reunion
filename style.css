@@ -990,6 +990,27 @@ html.js .reveal.visible { opacity: 1; transform: none; }
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
+/* Filtres avancés de l'historique */
+.histo-filtres {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.histo-filtres select, .histo-filtres input[type="date"] {
+  font: inherit; font-size: 0.88rem; color: var(--ink);
+  padding: 8px 12px; border-radius: var(--r-s);
+  border: 1px solid var(--line-2); background: var(--surface); cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.histo-filtres select:focus, .histo-filtres input[type="date"]:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.histo-filtre-date {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.85rem; color: var(--ink-2);
+}
+.histo-charger-plus { text-align: center; margin: 20px 0 8px; }
+
 /* Liens légaux dans le pied de page */
 .pied-liens { margin-top: 8px; }
 .pied-liens a {

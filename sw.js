@@ -10,13 +10,14 @@
 //    d'un autre utilisateur ou périmées.
 //  Incrémenter VERSION invalide l'ancien cache au déploiement suivant.
 // ======================================================================
-const VERSION = "synthia-v1";
+const VERSION = "synthia-v2";
 
 const SHELL = [
   "index.html", "app.html", "historique.html", "resultat.html",
   "parametres.html", "tarifs.html", "connexion.html", "inscription.html",
   "style.css", "config.js", "auth.js", "nav.js",
-  "favicon.svg", "icone-192.png", "icone-512.png", "manifest.json",
+  "logo-synthia-icone.png", "favicon.ico", "favicon-32.png",
+  "icone-192.png", "icone-512.png", "manifest.json",
 ];
 
 self.addEventListener("install", (e) => {

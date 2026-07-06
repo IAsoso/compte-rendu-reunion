@@ -44,7 +44,8 @@
     logoLien.href = "index.html";
     logoLien.className = "logo-lien";
     logoLien.innerHTML =
-      '<div class="logo">S</div><div><h1>Synthia</h1>' +
+      '<img class="logo-img" src="logo-synthia-icone.png?v=20260706b" alt="Logo Synthia" width="40" height="44">' +
+      '<div><h1>Synthia</h1>' +
       '<div class="tagline">Vos réunions, résumées par l\'IA</div></div>';
     header.appendChild(logoLien);
 

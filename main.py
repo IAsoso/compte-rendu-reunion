@@ -79,6 +79,16 @@ def appeler_gemini(**kwargs):
                     "Réessayez dans une minute."
                 )
             raise
+        except genai_errors.ServerError:
+            # 5xx Gemini (503 "high demand"…) : erreur transitoire côté
+            # Google — on réessaie avec le même backoff que pour le 429.
+            if essai < GEMINI_MAX_ESSAIS:
+                time.sleep(INTERVALLE_MIN_GEMINI_S * essai)
+                continue
+            raise RuntimeError(
+                "Le service d'IA est momentanément surchargé. Réessayez dans "
+                "quelques minutes."
+            )
 
 # ======================================================================
 #  AUTHENTIFICATION (comptes email / mot de passe)
@@ -1124,7 +1134,8 @@ def inscription(identifiants: IdentifiantsInscription, requete: Request):
     try:
         jeton = creer_jeton_email(user_id, "verification", JETON_VERIF_DUREE_MIN)
         lien = f"{URL_FRONTEND}/verifier-email.html?jeton={jeton}"
-        if not RESEND_API_KEY:
+        if not RESEND_API_KEY and not os.getenv("RENDER"):
+            # Lien tracé en DEV UNIQUEMENT (jamais dans les logs de production)
             print(f"[DEV] Lien de vérification pour {email} : {lien}")
         envoyer_email(
             email,
@@ -1199,7 +1210,8 @@ def mot_de_passe_oublie(demande: DemandeReset, requete: Request):
         try:
             jeton = creer_jeton_email(utilisateur["id"], "reset", JETON_RESET_DUREE_MIN)
             lien = f"{URL_FRONTEND}/reinitialisation.html?jeton={jeton}"
-            if not RESEND_API_KEY:
+            if not RESEND_API_KEY and not os.getenv("RENDER"):
+                # Lien tracé en DEV UNIQUEMENT (jamais dans les logs de production)
                 print(f"[DEV] Lien de réinitialisation pour {email} : {lien}")
             envoyer_email(
                 email,

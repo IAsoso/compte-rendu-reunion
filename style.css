@@ -11,7 +11,7 @@
   --surface: #ffffff;
   --ink: #1d1d1f;
   --ink-2: #6e6e73;
-  --ink-3: #86868b;
+  --ink-3: #727276;   /* petit texte discret — foncé juste assez pour passer WCAG AA (>= 4.5:1) */
   --line: #ececef;
   --line-2: #e0e0e4;
   --accent: #2563eb;

@@ -11,9 +11,9 @@
   <link rel="apple-touch-icon" href="icone-192.png">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#2563eb">
-  <link rel="stylesheet" href="style.css">
-  <script src="config.js"></script>
-  <script src="nav.js" defer></script>
+  <link rel="stylesheet" href="style.css?v=20260706">
+  <script src="config.js?v=20260706"></script>
+  <script src="nav.js?v=20260706" defer></script>
 </head>
 <body class="page-auth">
   <header data-nav></header>
@@ -23,9 +23,10 @@
       <h2 class="auth-titre">Nouveau mot de passe</h2>
       <p class="auth-sous-titre">Choisissez votre nouveau mot de passe (8 caractères minimum).</p>
 
-      <div class="champ">
+      <div class="champ champ-mdp">
         <label for="motDePasse">Nouveau mot de passe</label>
         <input type="password" id="motDePasse" autocomplete="new-password" placeholder="Au moins 8 caractères" required>
+        <button type="button" class="btn-oeil" aria-label="Afficher le mot de passe">👁</button>
       </div>
 
       <button type="submit" class="cta btn-auth" id="btnReinit">Mettre à jour</button>

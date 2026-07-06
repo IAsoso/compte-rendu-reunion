@@ -158,7 +158,35 @@
   function initialiser() {
     document.querySelectorAll("header[data-nav]").forEach(construireHeader);
     document.querySelectorAll("footer[data-pied]").forEach(construireFooter);
+
+    // Boutons « afficher/masquer le mot de passe » (pages d'auth)
+    document.querySelectorAll(".btn-oeil").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const champ = btn.parentElement.querySelector("input");
+        const visible = champ.type === "text";
+        champ.type = visible ? "password" : "text";
+        btn.textContent = visible ? "👁" : "🙈";
+        btn.setAttribute("aria-label", visible ? "Afficher le mot de passe" : "Masquer le mot de passe");
+      });
+    });
   }
+
+  // --- Toast global réutilisable (confirmations transitoires) ---
+  let _timerToast;
+  window.toastSynthia = function (message) {
+    let toast = document.getElementById("toastGlobal");
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.id = "toastGlobal";
+      toast.className = "toast cache";
+      toast.setAttribute("role", "status");
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.classList.remove("cache");
+    clearTimeout(_timerToast);
+    _timerToast = setTimeout(() => toast.classList.add("cache"), 2400);
+  };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", initialiser);

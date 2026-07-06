@@ -11,12 +11,12 @@
   <link rel="apple-touch-icon" href="icone-192.png">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#2563eb">
-  <link rel="stylesheet" href="style.css">
-  <script src="config.js"></script>
-  <script src="auth.js"></script>
+  <link rel="stylesheet" href="style.css?v=20260706">
+  <script src="config.js?v=20260706"></script>
+  <script src="auth.js?v=20260706"></script>
   <!-- Page protégée : sans jeton valide, on redirige vers la connexion. -->
   <script>exigerAuth();</script>
-  <script src="nav.js" defer></script>
+  <script src="nav.js?v=20260706" defer></script>
 </head>
 <body class="page-auth">
   <header data-nav></header>
@@ -25,7 +25,7 @@
     <!-- Abonnement : plan actuel + consommation du mois -->
     <div class="carte-auth rise" id="carteAbonnement" style="margin-bottom: 22px;">
       <h2 class="auth-titre">Abonnement</h2>
-      <p class="auth-sous-titre" id="abonnementIntro">Chargement…</p>
+      <p class="auth-sous-titre skeleton" id="abonnementIntro">Chargement de votre abonnement</p>
 
       <div class="usage-barre-fond cache" id="usageBarreFond">
         <div class="usage-barre-remplissage" id="usageBarreRemplissage"></div>
@@ -60,8 +60,16 @@
           <option value="détaillé">Détaillé (complet)</option>
         </select>
       </div>
+      <div class="champ">
+        <label for="theme">Thème de l'interface</label>
+        <select id="theme">
+          <option value="auto">Automatique (suit le système)</option>
+          <option value="clair">Clair</option>
+          <option value="sombre">Sombre</option>
+        </select>
+      </div>
 
-      <button type="submit" class="cta btn-auth" id="btnEnregistrer">Enregistrer</button>
+      <button type="submit" class="cta btn-auth" id="btnEnregistrer">Enregistrer mes préférences</button>
       <p class="auth-message" id="message"></p>
     </form>
 
@@ -100,6 +108,7 @@
         if (!reponse.ok) throw new Error();
         const statut = await reponse.json();
 
+        abonnementIntro.classList.remove("skeleton");
         abonnementIntro.textContent = `Offre ${statut.label} — ${statut.minutes_quota} min de réunion incluses par mois.`;
 
         const pourcentage = Math.min(100, Math.round((statut.minutes_utilisees / statut.minutes_quota) * 100));
@@ -130,9 +139,25 @@
           });
         }
       } catch (erreur) {
+        abonnementIntro.classList.remove("skeleton");
         abonnementIntro.textContent = "Impossible de charger votre abonnement.";
       }
     })();
+
+    // ---- Thème de l'interface (stocké dans ce navigateur, effet immédiat) ----
+    const selTheme = document.getElementById("theme");
+    selTheme.value = localStorage.getItem("synthia_theme") || "auto";
+    selTheme.addEventListener("change", () => {
+      const choix = selTheme.value;
+      document.documentElement.classList.remove("clair", "sombre");
+      if (choix === "auto") {
+        localStorage.removeItem("synthia_theme");
+      } else {
+        localStorage.setItem("synthia_theme", choix);
+        document.documentElement.classList.add(choix);
+      }
+      toastSynthia("🎨 Thème appliqué");
+    });
 
     const form = document.getElementById("formParametres");
     const bouton = document.getElementById("btnEnregistrer");
@@ -197,15 +222,14 @@
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ type_reunion: selType.value, format: selFormat.value }),
         });
-        if (!reponse.ok) throw new Error("Échec de l'enregistrement.");
-        message.className = "auth-message succes";
-        message.textContent = "✅ Préférences enregistrées.";
+        if (!reponse.ok) throw new Error("Vos préférences n'ont pas pu être enregistrées. Réessayez dans un instant.");
+        toastSynthia("✅ Préférences enregistrées");
       } catch (erreur) {
         message.className = "auth-message erreur";
-        message.textContent = erreur.message || "Serveur injoignable.";
+        message.textContent = erreur.message || "Connexion impossible. Vérifiez votre accès internet.";
       } finally {
         bouton.disabled = false;
-        bouton.textContent = "Enregistrer";
+        bouton.textContent = "Enregistrer mes préférences";
       }
     });
   </script>

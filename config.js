@@ -23,6 +23,16 @@ const hoteLocal =
 
 window.API_BASE_URL = hoteLocal ? URL_LOCALE : URL_PROD;
 
+// --- Thème : appliqué ICI (config.js est chargé en tout premier dans le
+// <head>) pour éviter un flash clair/sombre au chargement. Réglage dans
+// Paramètres : "auto" (par défaut, suit le système), "clair" ou "sombre".
+(function () {
+  const theme = localStorage.getItem("synthia_theme");
+  if (theme === "sombre" || theme === "clair") {
+    document.documentElement.classList.add(theme);
+  }
+})();
+
 // Client ID OAuth Google (public, pas un secret) — pour le bouton « Se
 // connecter avec Google ». Doit correspondre au GOOGLE_CLIENT_ID du backend.
 window.GOOGLE_CLIENT_ID = "896098783552-0d1l3r5htlps8qift4enph9uociif381.apps.googleusercontent.com";

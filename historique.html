@@ -11,12 +11,12 @@
   <link rel="apple-touch-icon" href="icone-192.png">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#2563eb">
-  <link rel="stylesheet" href="style.css">
-  <script src="config.js"></script>
-  <script src="auth.js"></script>
+  <link rel="stylesheet" href="style.css?v=20260706">
+  <script src="config.js?v=20260706"></script>
+  <script src="auth.js?v=20260706"></script>
   <!-- Page protégée : sans jeton valide, on redirige vers la connexion. -->
   <script>exigerAuth();</script>
-  <script src="nav.js" defer></script>
+  <script src="nav.js?v=20260706" defer></script>
 </head>
 <body class="page-app page-historique">
   <header data-nav></header>
@@ -24,7 +24,7 @@
   <main class="doc">
     <div class="histo-entete">
       <h2 class="doc-titre">Historique des comptes-rendus</h2>
-      <p class="doc-meta" id="histoSousTitre">Chargement…</p>
+      <p class="doc-meta skeleton" id="histoSousTitre">Chargement de vos comptes-rendus</p>
     </div>
 
     <!-- Recherche -->
@@ -146,6 +146,7 @@
     // Chargement de la liste (recherche + filtres avancés)
     async function chargerHistorique() {
       const monTour = ++sequenceRecherche;
+      sousTitre.classList.remove("skeleton");   // fin du squelette dès la 1re réponse
       // On repart d'un état propre à chaque appel (recherche relancée).
       liste.innerHTML = "";
       nbAffiches = 0;

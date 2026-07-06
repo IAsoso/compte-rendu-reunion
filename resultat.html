@@ -11,15 +11,15 @@
   <link rel="apple-touch-icon" href="icone-192.png">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#2563eb">
-  <link rel="stylesheet" href="style.css">
-  <script src="config.js"></script>
-  <script src="auth.js"></script>
+  <link rel="stylesheet" href="style.css?v=20260706">
+  <script src="config.js?v=20260706"></script>
+  <script src="auth.js?v=20260706"></script>
   <!-- Page protégée : sans jeton valide, on redirige vers la connexion. -->
   <script>exigerAuth();</script>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
-  <script src="nav.js" defer></script>
+  <script src="nav.js?v=20260706" defer></script>
 </head>
 <body class="page-resultat">
   <header data-nav></header>
@@ -51,10 +51,10 @@
       </div>
 
       <!-- Onglets (contrôle segmenté) -->
-      <div class="onglets" role="tablist">
-        <button class="onglet actif" data-panneau="panCR" role="tab">📄 Compte-rendu</button>
-        <button class="onglet" data-panneau="panTr" role="tab">📝 Transcription</button>
-        <button class="onglet" data-panneau="panAc" role="tab">
+      <div class="onglets" role="tablist" aria-label="Sections du compte-rendu">
+        <button class="onglet actif" data-panneau="panCR" role="tab" aria-selected="true">📄 Compte-rendu</button>
+        <button class="onglet" data-panneau="panTr" role="tab" aria-selected="false">📝 Transcription</button>
+        <button class="onglet" data-panneau="panAc" role="tab" aria-selected="false">
           ✅ Actions <span class="pastille cache" id="compteActions">0</span>
         </button>
       </div>
@@ -224,9 +224,13 @@
     // --- 2. Onglets ---
     document.querySelectorAll(".onglet").forEach((onglet) => {
       onglet.onclick = function () {
-        document.querySelectorAll(".onglet").forEach((o) => o.classList.remove("actif"));
+        document.querySelectorAll(".onglet").forEach((o) => {
+          o.classList.remove("actif");
+          o.setAttribute("aria-selected", "false");
+        });
         document.querySelectorAll(".panneau").forEach((p) => p.classList.remove("actif"));
         this.classList.add("actif");
+        this.setAttribute("aria-selected", "true");
         document.getElementById(this.dataset.panneau).classList.add("actif");
       };
     });

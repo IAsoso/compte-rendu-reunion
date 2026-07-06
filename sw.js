@@ -37,7 +37,10 @@ self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET" || url.origin !== self.location.origin) return;
 
   e.respondWith(
-    fetch(e.request)
+    // no-cache : revalide auprès du serveur (304 léger) au lieu de faire
+    // confiance au cache HTTP du disque — évite de servir du JS périmé
+    // après un déploiement.
+    fetch(e.request, { cache: "no-cache" })
       .then((reponse) => {
         const copie = reponse.clone();
         caches.open(VERSION).then((c) => c.put(e.request, copie));

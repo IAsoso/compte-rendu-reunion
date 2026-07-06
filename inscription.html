@@ -11,14 +11,14 @@
   <link rel="apple-touch-icon" href="icone-192.png">
   <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#2563eb">
-  <link rel="stylesheet" href="style.css">
-  <script src="config.js"></script>
-  <script src="auth.js"></script>
+  <link rel="stylesheet" href="style.css?v=20260706">
+  <script src="config.js?v=20260706"></script>
+  <script src="auth.js?v=20260706"></script>
   <!-- Déjà connecté ? On va directement à l'app. -->
   <script>if (getToken()) window.location.href = "app.html";</script>
   <!-- Google Identity Services : initialise le bouton une fois la lib chargée. -->
   <script src="https://accounts.google.com/gsi/client" async onload="initialiserBoutonGoogle()"></script>
-  <script src="nav.js" defer></script>
+  <script src="nav.js?v=20260706" defer></script>
 </head>
 <body class="page-auth">
   <header data-nav></header>
@@ -32,9 +32,10 @@
         <label for="email">Email</label>
         <input type="email" id="email" autocomplete="email" placeholder="vous@exemple.com" required>
       </div>
-      <div class="champ">
+      <div class="champ champ-mdp">
         <label for="motDePasse">Mot de passe</label>
         <input type="password" id="motDePasse" autocomplete="new-password" placeholder="Au moins 8 caractères" required>
+        <button type="button" class="btn-oeil" aria-label="Afficher le mot de passe">👁</button>
       </div>
 
       <label class="champ-cgu">

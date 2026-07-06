@@ -770,6 +770,11 @@ def recuperer_compte_rendu(cr_id, user_id):
 # On prépare la base dès le démarrage du serveur
 init_db()
 
+# Sauvegardes automatiques (snapshot -> disque + stockage objet). No-op tant
+# que ce n'est pas activé (RENDER en prod, ou BACKUP_ACTIF=1 en local).
+import sauvegarde
+sauvegarde.demarrer_sauvegardes(CHEMIN_DB)
+
 
 # --- Fonction de NETTOYAGE de la transcription (preprocessing) ---
 def nettoyer_transcription(texte_brut):

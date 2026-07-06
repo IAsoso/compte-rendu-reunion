@@ -165,4 +165,11 @@
   } else {
     initialiser();
   }
+
+  // --- PWA : enregistrement du service worker (une seule fois, partout) ---
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js").catch(() => {
+      /* hors-ligne non critique : l'app fonctionne sans */
+    });
+  }
 })();

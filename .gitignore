@@ -11,3 +11,5 @@ __pycache__/
 # Base de données SQLite (données locales, ne doivent pas partir en ligne)
 synthia.db
 *.db
+# Configuration locale Claude Code (machine de dev uniquement)
+.claude/

@@ -207,7 +207,7 @@
     function construireMeta(d) {
       const parties = [];
       if (d.type_reunion) {
-        parties.push(d.type_reunion.charAt(0).toUpperCase() + d.type_reunion.slice(1));
+        parties.push(libelleType(d.type_reunion));
       }
       if (d.date) {
         const dt = new Date(d.date);

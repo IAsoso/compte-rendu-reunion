@@ -486,18 +486,94 @@ def init_db():
         """
     )
 
+    # Migration des préférences de type de réunion vers les nouvelles catégories
+    # (basées sur la NATURE de la réunion). Idempotente : ne touche que les
+    # anciennes valeurs, et rabat tout reste inconnu (non NULL) sur "general".
+    for ancien, nouveau in MIGRATION_TYPES.items():
+        conn.execute(
+            "UPDATE utilisateurs SET type_reunion_defaut = ? WHERE type_reunion_defaut = ?",
+            (nouveau, ancien),
+        )
+    marqueurs = ",".join("?" * len(CATEGORIES_REUNION))
+    conn.execute(
+        f"UPDATE utilisateurs SET type_reunion_defaut = 'general' "
+        f"WHERE type_reunion_defaut IS NOT NULL AND type_reunion_defaut NOT IN ({marqueurs})",
+        tuple(CATEGORIES_REUNION.keys()),
+    )
+
     conn.commit()
     conn.close()
 
 
-# Préférences : options autorisées (mêmes valeurs que les select de app.html)
-TYPES_REUNION = {
-    "réunion d'équipe", "réunion client", "réunion de projet",
-    "point rapide", "réunion générale",
+# ======================================================================
+#  CATÉGORIES DE RÉUNION (par NATURE, universelles quel que soit le secteur)
+# ----------------------------------------------------------------------
+#  Valeur canonique = un slug stable (stocké en base, envoyé par le front).
+#  "label"     : libellé affiché (mappé aussi côté frontend, voir nav.js).
+#  "directive" : consigne injectée dans les prompts Gemini pour adapter le
+#                compte-rendu à la nature de la réunion.
+# ======================================================================
+CATEGORIES_REUNION = {
+    "suivi": {
+        "label": "Suivi / avancement",
+        "directive": (
+            "Réunion de SUIVI / AVANCEMENT (point de statut, coordination interne). "
+            "Mets l'accent sur l'état d'avancement de chaque sujet ou chantier, les points "
+            "bloquants identifiés, et les prochaines étapes concrètes."
+        ),
+    },
+    "echange_externe": {
+        "label": "Échange externe",
+        "directive": (
+            "ÉCHANGE EXTERNE avec un tiers (client, partenaire, fournisseur, prestataire). "
+            "Mets l'accent sur les besoins et demandes exprimés par le tiers, et surtout sur "
+            "les ENGAGEMENTS pris de part et d'autre : qui s'engage à quoi, et pour quand."
+        ),
+    },
+    "decision": {
+        "label": "Prise de décision",
+        "directive": (
+            "Réunion de PRISE DE DÉCISION (comité, arbitrage, validation). Pour CHAQUE "
+            "décision, n'indique pas seulement ce qui a été décidé mais explicite le "
+            "RAISONNEMENT qui y a conduit : options envisagées, critères de choix, et pourquoi "
+            "l'option retenue l'a emporté."
+        ),
+    },
+    "projet": {
+        "label": "Travail de projet",
+        "directive": (
+            "Réunion de TRAVAIL DE PROJET (planification, avancement d'un projet). Mets "
+            "l'accent sur le périmètre et les jalons, la répartition des tâches, ainsi que les "
+            "dépendances et les risques identifiés."
+        ),
+    },
+    "general": {
+        "label": "Général / autre",
+        "directive": (
+            "Réunion à caractère général. Restitue fidèlement les sujets abordés, les "
+            "décisions prises et les actions à mener."
+        ),
+    },
 }
+
+# Correspondance anciennes catégories -> nouvelles (utilisée par la migration).
+MIGRATION_TYPES = {
+    "point rapide": "suivi",
+    "réunion d'équipe": "suivi",
+    "réunion client": "echange_externe",
+    "réunion de projet": "projet",
+    "réunion générale": "general",
+}
+
+TYPES_REUNION = set(CATEGORIES_REUNION)   # slugs autorisés
 FORMATS = {"concis", "détaillé"}
-TYPE_REUNION_DEFAUT = "réunion générale"
+TYPE_REUNION_DEFAUT = "general"
 FORMAT_DEFAUT = "concis"
+
+
+def directive_categorie(slug):
+    """Directive de prompt pour une catégorie (repli "general" si inconnu)."""
+    return CATEGORIES_REUNION.get(slug, CATEGORIES_REUNION["general"])["directive"]
 
 
 def get_preferences(user_id):
@@ -832,27 +908,42 @@ Transcription brute :
     )
     return reponse.text
 
-# --- Fonction qui génère le compte-rendu avec Gemini ---
-# --- Fonction qui génère le compte-rendu avec Gemini ---
-def generer_compte_rendu(texte_transcription, type_reunion, format_souhaite):
-    # On adapte la consigne de longueur selon le format choisi
-    if format_souhaite == "concis":
-        consigne_format = "Sois bref et va à l'essentiel. Compte-rendu court."
-    else:
-        consigne_format = "Sois complet et détaillé, développe chaque point."
+# Sections Markdown communes à TOUS les comptes-rendus (cohérence garantie
+# d'une génération à l'autre, et distinction stricte décisions / actions).
+FORMAT_COMPTE_RENDU = """Rédige le compte-rendu en Markdown avec EXACTEMENT ces quatre sections, dans cet ordre, chacune introduite par un titre de niveau 2 identique à chaque fois :
 
+## Résumé
+Un court paragraphe : contexte, objet et participants de la réunion s'ils sont identifiables.
+
+## Points clés
+Les sujets importants réellement abordés, en liste à puces.
+
+## Décisions
+Les choix qui ont été ARRÊTÉS ou VALIDÉS pendant la réunion — le « quoi » tranché, jamais une tâche à faire. En liste à puces ; quand c'est pertinent, précise brièvement le pourquoi de la décision.
+
+## Actions à faire
+Les tâches CONCRÈTES à réaliser APRÈS la réunion. Une action par puce, au format : **Responsable** — description de la tâche (échéance si mentionnée). Chaque action commence par un verbe.
+
+Règles impératives :
+- Une décision n'est PAS une action : ne place jamais la même chose dans les deux sections.
+- Si une section n'a aucun contenu, écris une seule ligne : « Aucune information. »
+- N'invente rien : n'ajoute aucune information absente de la source.
+- Pas de titre principal, pas d'introduction ni de commentaire hors de ces sections."""
+
+
+def _consigne_format(format_souhaite):
+    return ("Sois bref et va à l'essentiel." if format_souhaite == "concis"
+            else "Sois complet et détaillé, développe chaque point.")
+
+
+# --- Génération du compte-rendu (flux court) ---
+def generer_compte_rendu(texte_transcription, type_reunion, format_souhaite):
     prompt = f"""Tu es un assistant spécialisé dans la rédaction de comptes-rendus de réunion professionnels.
 
-Type de réunion : {type_reunion}.
-{consigne_format}
+{directive_categorie(type_reunion)}
+{_consigne_format(format_souhaite)}
 
-À partir de la transcription brute ci-dessous, rédige un compte-rendu clair et structuré avec les sections suivantes :
-- Résumé général
-- Points clés abordés
-- Décisions prises
-- Actions à faire (avec qui si mentionné)
-
-Si une section n'a pas d'information, indique "Aucune information". N'utilise pas de titre principal redondant.
+{FORMAT_COMPTE_RENDU}
 
 Transcription :
 {texte_transcription}
@@ -863,19 +954,27 @@ Transcription :
     )
     return reponse.text
 
-# --- Fonction qui extrait les ACTIONS sous forme structurée (JSON) ---
-def extraire_actions(texte_propre):
-    prompt = f"""Analyse cette transcription de réunion et extrais UNIQUEMENT les actions à faire (tâches, engagements, choses à accomplir).
 
-Pour chaque action, identifie :
-- "tache" : ce qu'il faut faire (clair et concis)
-- "responsable" : qui doit le faire (ou "Non spécifié" si pas mentionné)
-- "echeance" : la date ou le délai (ou "Non spécifié" si pas mentionné)
+# --- Extraction des ACTIONS sous forme structurée (JSON) ---
+def extraire_actions(texte_propre, type_reunion="general"):
+    prompt = f"""{directive_categorie(type_reunion)}
 
+À partir du texte de réunion ci-dessous, extrais UNIQUEMENT les ACTIONS À FAIRE : les tâches concrètes à réaliser APRÈS la réunion.
+
+Ne confonds pas action et décision :
+- une DÉCISION est un choix déjà arrêté (ex. « on retient le prestataire X ») → À IGNORER ici.
+- une ACTION est une tâche future avec un verbe d'action (ex. « envoyer le devis », « rappeler le client »).
+
+Pour chaque action, renseigne :
+- "tache" : la tâche à accomplir, claire et concise, commençant par un verbe.
+- "responsable" : qui doit le faire (ou "Non spécifié" si pas mentionné).
+- "echeance" : la date ou le délai (ou "Non spécifié" si pas mentionné).
+
+Fusionne les doublons : si la même tâche revient plusieurs fois, ne la garde qu'UNE seule fois.
 Réponds avec un tableau JSON d'objets. S'il n'y a aucune action, réponds avec un tableau vide [].
 N'invente aucune action qui n'est pas dans le texte.
 
-Transcription :
+Texte :
 {texte_propre}
 """
     reponse = appeler_gemini(
@@ -943,11 +1042,18 @@ def decouper_audio(audio):
 
 
 def resumer_morceau(texte_morceau, type_reunion):
-    """MAP : produit des notes structurées concises pour un extrait de réunion."""
-    prompt = f"""Tu analyses UN EXTRAIT d'une réunion ({type_reunion}).
-À partir de cet extrait, produis des notes concises et structurées : points abordés,
-décisions évoquées, actions/engagements mentionnés. Ne rédige PAS encore le compte-rendu
-final, ne fais pas d'introduction : uniquement des notes fidèles à cet extrait.
+    """MAP : produit des notes structurées concises pour un extrait de réunion.
+    Les actions sont formulées de façon canonique pour faciliter le dédoublonnage
+    au moment du REDUCE (réunions longues)."""
+    prompt = f"""{directive_categorie(type_reunion)}
+
+Tu analyses UN EXTRAIT d'une réunion (pas la totalité). Produis des notes concises et FIDÈLES à cet extrait, sans introduction et sans rien inventer, en trois blocs :
+
+POINTS : les sujets abordés dans l'extrait.
+DÉCISIONS : les choix arrêtés ou validés dans l'extrait (le « quoi » tranché, pas une tâche).
+ACTIONS : les tâches à faire, une par ligne, au format « Responsable — tâche (échéance) ». Formule chaque action de façon canonique et concise, pour qu'un doublon présent dans un autre extrait soit facilement reconnaissable.
+
+Ne rédige PAS encore le compte-rendu final.
 
 Extrait :
 {texte_morceau}
@@ -961,29 +1067,18 @@ Extrait :
 
 def generer_compte_rendu_depuis_resumes(resumes, type_reunion, format_souhaite):
     """REDUCE : assemble les notes de toutes les parties en UN compte-rendu final."""
-    if format_souhaite == "concis":
-        consigne_format = "Sois bref et va à l'essentiel. Compte-rendu court."
-    else:
-        consigne_format = "Sois complet et détaillé, développe chaque point."
-
     corpus = "\n\n".join(
         f"[Partie {i + 1}]\n{r}" for i, r in enumerate(resumes)
     )
 
     prompt = f"""Tu es un assistant spécialisé dans la rédaction de comptes-rendus de réunion professionnels.
 
-Type de réunion : {type_reunion}.
-{consigne_format}
+{directive_categorie(type_reunion)}
+{_consigne_format(format_souhaite)}
 
-Voici les NOTES de plusieurs parties successives d'UNE MÊME réunion. Rédige UN SEUL
-compte-rendu final, cohérent et non redondant (fusionne les répétitions entre parties),
-avec les sections suivantes :
-- Résumé général
-- Points clés abordés
-- Décisions prises
-- Actions à faire (avec qui si mentionné)
+Voici les NOTES de plusieurs parties successives d'UNE MÊME réunion. Rédige UN SEUL compte-rendu final, cohérent, en fusionnant les répétitions entre parties. IMPORTANT : dédoublonne rigoureusement les actions — si une même tâche apparaît dans plusieurs parties, ne la fais figurer qu'UNE seule fois.
 
-Si une section n'a pas d'information, indique "Aucune information". N'utilise pas de titre principal redondant.
+{FORMAT_COMPTE_RENDU}
 
 Notes des différentes parties :
 {corpus}
@@ -1039,7 +1134,7 @@ def traiter_audio_complet(chemin_audio, type_reunion, format_souhaite, maj_progr
         maj_progression("redaction", 0, 1, "Rédaction du compte-rendu…")
         texte_propre = nettoyer_transcription(texte_brut)
         compte_rendu = generer_compte_rendu(texte_propre, type_reunion, format_souhaite)
-        actions = extraire_actions(texte_propre)
+        actions = extraire_actions(texte_propre, type_reunion)
 
         cr_id = enregistrer_compte_rendu(
             user_id, type_reunion, format_souhaite, texte_propre, compte_rendu, actions
@@ -1079,7 +1174,7 @@ def traiter_audio_complet(chemin_audio, type_reunion, format_souhaite, maj_progr
     # REDUCE : compte-rendu final + actions (sur les notes, courtes)
     maj_progression("redaction", total, total, "Rédaction du compte-rendu final…")
     compte_rendu = generer_compte_rendu_depuis_resumes(resumes, type_reunion, format_souhaite)
-    actions = extraire_actions("\n\n".join(resumes))
+    actions = extraire_actions("\n\n".join(resumes), type_reunion)
 
     cr_id = enregistrer_compte_rendu(
         user_id, type_reunion, format_souhaite, texte_complet, compte_rendu, actions
@@ -1554,7 +1649,9 @@ class DemandeModification(BaseModel):
 
 
 def modifier_compte_rendu_ia(compte_rendu, instruction):
-    prompt = f"""Voici un compte-rendu de réunion. Applique cette modification demandée par l'utilisateur, et renvoie UNIQUEMENT le compte-rendu modifié en entier, sans commentaire.
+    prompt = f"""Voici un compte-rendu de réunion en Markdown. Applique la modification demandée et renvoie UNIQUEMENT le compte-rendu modifié EN ENTIER, sans commentaire.
+
+Conserve la même structure de sections (## Résumé, ## Points clés, ## Décisions, ## Actions à faire) et le même format Markdown. Ne déplace pas une décision dans les actions ni l'inverse. N'invente aucune information non présente, sauf si la modification demandée le requiert explicitement.
 
 Modification demandée : {instruction}
 

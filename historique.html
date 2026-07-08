@@ -36,11 +36,11 @@
     <div class="histo-filtres">
       <select id="filtreType" aria-label="Filtrer par type de réunion">
         <option value="">Tous les types</option>
-        <option value="réunion d'équipe">Réunion d'équipe</option>
-        <option value="réunion client">Réunion client</option>
-        <option value="réunion de projet">Réunion de projet</option>
-        <option value="point rapide">Point rapide</option>
-        <option value="réunion générale">Autre / Générale</option>
+        <option value="suivi">Suivi / avancement</option>
+        <option value="echange_externe">Échange externe</option>
+        <option value="decision">Prise de décision</option>
+        <option value="projet">Travail de projet</option>
+        <option value="general">Général / autre</option>
       </select>
       <label class="histo-filtre-date">Du <input type="date" id="filtreDu" aria-label="Date de début"></label>
       <label class="histo-filtre-date">Au <input type="date" id="filtreAu" aria-label="Date de fin"></label>
@@ -130,7 +130,7 @@
         item.innerHTML = `
           <span class="histo-icone">📄</span>
           <span class="histo-infos">
-            <span class="histo-type">${echap(capitaliser(cr.type_reunion))}</span>
+            <span class="histo-type">${echap(libelleType(cr.type_reunion))}</span>
             <span class="histo-date">${echap(formaterDate(cr.date_creation))}${cr.format ? "  ·  " + echap(cr.format) : ""}</span>
           </span>
           <span class="histo-fleche" aria-hidden="true">→</span>

@@ -36,3 +36,20 @@ window.API_BASE_URL = hoteLocal ? URL_LOCALE : URL_PROD;
 // Client ID OAuth Google (public, pas un secret) — pour le bouton « Se
 // connecter avec Google ». Doit correspondre au GOOGLE_CLIENT_ID du backend.
 window.GOOGLE_CLIENT_ID = "896098783552-0d1l3r5htlps8qift4enph9uociif381.apps.googleusercontent.com";
+
+// Libellés des catégories de réunion (slug -> texte affiché). À garder aligné
+// avec CATEGORIES_REUNION du backend (main.py). Défini dans config.js (chargé
+// en synchrone AVANT les scripts inline des pages) pour être toujours dispo.
+window.LIBELLES_TYPE = {
+  suivi: "Suivi / avancement",
+  echange_externe: "Échange externe",
+  decision: "Prise de décision",
+  projet: "Travail de projet",
+  general: "Général / autre",
+};
+window.libelleType = function (valeur) {
+  if (!valeur) return "Réunion";
+  if (window.LIBELLES_TYPE[valeur]) return window.LIBELLES_TYPE[valeur];
+  // Ancien libellé (compte-rendu d'avant la refonte) : affiché capitalisé tel quel.
+  return valeur.charAt(0).toUpperCase() + valeur.slice(1);
+};

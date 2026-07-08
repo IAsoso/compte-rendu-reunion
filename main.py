@@ -349,18 +349,24 @@ PLANS = {
         "label": "Gratuit",
         "prix_eur": 0,
         "minutes_mois": 120,
+        "minutes_max_par_reunion": 20,   # plafond par enregistrement (offre gratuite)
+        "assistant_ia": False,           # assistant d'édition réservé aux offres payantes
         "stripe_price_id": None,
     },
     "pro": {
         "label": "Pro",
         "prix_eur": 15,
         "minutes_mois": 1200,
+        "minutes_max_par_reunion": None,  # pas de plafond par réunion
+        "assistant_ia": True,
         "stripe_price_id": os.getenv("STRIPE_PRICE_ID_PRO", ""),
     },
     "business": {
         "label": "Business",
         "prix_eur": 29,
         "minutes_mois": 3000,
+        "minutes_max_par_reunion": None,
+        "assistant_ia": True,
         "stripe_price_id": os.getenv("STRIPE_PRICE_ID_BUSINESS", ""),
     },
 }
@@ -566,11 +572,26 @@ def duree_minutes_fichier(chemin_audio):
 
 
 def verifier_quota(user_id, duree_minutes_demandees):
-    """Lève une HTTPException 402 si traiter cet audio dépasserait le quota
-    mensuel du plan de l'utilisateur. Appelée AVANT tout appel Groq/Gemini
-    pour ne jamais payer un traitement qu'on va refuser."""
+    """Lève une HTTPException 402 si traiter cet audio dépasse une limite du plan :
+    le plafond PAR RÉUNION (offre gratuite) ou le quota MENSUEL. Appelée AVANT tout
+    appel Groq/Gemini pour ne jamais payer un traitement qu'on va refuser."""
     plan = get_plan_utilisateur(user_id)
-    quota = PLANS[plan]["minutes_mois"]
+    infos = PLANS[plan]
+
+    # 1. Plafond par réunion (offre gratuite) — vérifié même si le quota mensuel reste.
+    cap = infos.get("minutes_max_par_reunion")
+    if cap and duree_minutes_demandees > cap:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"Cet enregistrement dure environ {duree_minutes_demandees:.0f} min, "
+                f"or l'offre {infos['label']} est limitée à {cap} min par réunion. "
+                "Passez à une offre supérieure pour traiter des réunions plus longues."
+            ),
+        )
+
+    # 2. Quota mensuel du plan.
+    quota = infos["minutes_mois"]
     deja_utilisees = minutes_utilisees_ce_mois(user_id)
     if deja_utilisees + duree_minutes_demandees > quota:
         restantes = max(0.0, quota - deja_utilisees)
@@ -578,8 +599,21 @@ def verifier_quota(user_id, duree_minutes_demandees):
             status_code=402,
             detail=(
                 f"Quota mensuel atteint ({quota} min incluses dans l'offre "
-                f"{PLANS[plan]['label']}). Il vous reste {restantes:.1f} min ce "
+                f"{infos['label']}). Il vous reste {restantes:.1f} min ce "
                 "mois-ci. Passez à une offre supérieure pour continuer."
+            ),
+        )
+
+
+def exiger_assistant_ia(user_id):
+    """Lève 403 si le plan de l'utilisateur n'inclut pas l'assistant IA d'édition."""
+    plan = get_plan_utilisateur(user_id)
+    if not PLANS[plan].get("assistant_ia"):
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                "L'assistant IA d'édition est réservé aux offres Pro et Business. "
+                "Passez à une offre supérieure pour modifier vos comptes-rendus par chat."
             ),
         )
 
@@ -1539,7 +1573,8 @@ def modifier_compte_rendu(
     demande: DemandeModification,
     user_id: int = Depends(utilisateur_courant),
 ):
-    # Protégé : appel IA payant, réservé aux utilisateurs connectés.
+    # Réservé aux offres Pro/Business (403 clair sinon).
+    exiger_assistant_ia(user_id)
     compte_rendu_modifie = modifier_compte_rendu_ia(
         demande.compte_rendu, demande.instruction
     )

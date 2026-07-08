@@ -1219,6 +1219,9 @@ html.js .reveal.visible { opacity: 1; transform: none; }
 .tarif-fonctionnalites li::before {
   content: "✓"; color: var(--accent); font-weight: 700; flex-shrink: 0;
 }
+/* Fonctionnalité NON incluse dans l'offre (ex. assistant IA sur le plan gratuit) */
+.tarif-fonctionnalites li.tarif-exclu { color: var(--ink-3); }
+.tarif-fonctionnalites li.tarif-exclu::before { content: "✕"; color: var(--ink-3); }
 
 .tarif-cta {
   width: 100%; justify-content: center; text-align: center;

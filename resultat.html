@@ -385,10 +385,33 @@
     let requeteEnCours = false;
     // (L'affichage du bouton assistant est géré dans afficherDonnees().)
 
+    // L'assistant IA est réservé aux offres Pro/Business. On récupère le plan
+    // pour prévenir l'utilisateur AVANT qu'il tape (le backend renvoie de toute
+    // façon un 403 clair, géré plus bas — double sécurité).
+    let planPermetAssistant = true;
+    (async () => {
+      try {
+        const r = await fetchAuth(API_BASE_URL + "/abonnement/statut");
+        if (r.ok) { const s = await r.json(); planPermetAssistant = s.plan !== "gratuit"; }
+      } catch (erreur) { /* silencieux : le 403 serveur reste le garde-fou */ }
+    })();
+
     // Ouverture / fermeture du panneau
     btnAssistant.onclick = function () {
       panneauChat.classList.remove("cache");
       btnAssistant.classList.add("cache");
+      if (!planPermetAssistant) {
+        chatInput.disabled = true;
+        chatEnvoyer.disabled = true;
+        chatInput.placeholder = "Réservé aux offres Pro et Business";
+        if (!document.getElementById("upsellAssistant")) {
+          const b = ajouterMessage("ia",
+            "🔒 L'assistant IA d'édition est réservé aux offres <strong>Pro</strong> et " +
+            "<strong>Business</strong>. <a href=\"tarifs.html\">Voir les offres →</a>");
+          b.id = "upsellAssistant";
+        }
+        return;
+      }
       chatInput.focus();
     };
     btnFermerChat.onclick = function () {
@@ -457,6 +480,16 @@
           }),
         });
         const resultat = await reponse.json();
+
+        // Offre insuffisante (403) ou autre refus : on N'ÉCRASE PAS le compte-rendu,
+        // on affiche le message clair du serveur (+ lien vers les offres si 403).
+        if (!reponse.ok) {
+          const msg = typeof resultat.detail === "string"
+            ? resultat.detail : "La modification n'a pas pu être appliquée.";
+          bulleIa.innerHTML = echapper(msg) +
+            (reponse.status === 403 ? ' <a href="tarifs.html">Voir les offres →</a>' : "");
+          return;
+        }
 
         // On remplace le compte-rendu affiché par la version modifiée
         // (assainie : la réponse de l'IA n'est jamais insérée telle quelle)

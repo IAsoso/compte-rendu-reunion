@@ -1021,6 +1021,9 @@ html.js .reveal.visible { opacity: 1; transform: none; }
 .histo-charger-plus { text-align: center; margin: 20px 0 8px; }
 
 /* Liens légaux dans le pied de page */
+.pied-support { margin-top: 10px; }
+.pied-support a { color: var(--accent); text-decoration: none; font-weight: 600; }
+.pied-support a:hover { text-decoration: underline; }
 .pied-liens { margin-top: 8px; }
 .pied-liens a {
   color: var(--ink-2); text-decoration: none; font-weight: 500;

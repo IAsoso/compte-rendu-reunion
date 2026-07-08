@@ -150,6 +150,8 @@
   function construireFooter(footer) {
     footer.innerHTML =
       "<p>Synthia — Comptes-rendus de réunion par IA</p>" +
+      '<p class="pied-support">Besoin d\'aide ? ' +
+      '<a href="mailto:sofianepatureau@gmail.com">Contactez-nous</a></p>' +
       '<p class="pied-liens">' +
       '<a href="mentions-legales.html">Mentions légales</a> · ' +
       '<a href="cgu.html">CGU</a> · ' +
